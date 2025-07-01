@@ -2,9 +2,20 @@ import React from 'react'
 import AdminNavBar from '../../Components/Admin/AdminNavBar'
 import AdminSideBar from '../../Components/Admin/AdminSideBar'
 import { Outlet } from 'react-router-dom'
+import { useAppContext } from '../../context/AppContext'
+import { useEffect } from 'react'
+import Loading from '../../Components/Loading'
 
 const Layout = () => {
-  return (
+
+  const {isAdmin,fetchIsAdmin} = useAppContext()
+
+  useEffect(()=>{
+    fetchIsAdmin()
+
+  },[])
+
+  return isAdmin ?(
     <>
     <AdminNavBar/>
     <div className='flex'>
@@ -14,7 +25,7 @@ const Layout = () => {
         </div>
     </div>
     </>
-  )
+  ) : <Loading/>
 }
 
 export default Layout
