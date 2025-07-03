@@ -1,14 +1,17 @@
 import mongoose from "mongoose";
-import { type } from "os";
-  /*A schema is like a blueprint or structure for your data.
-It tells your database what kind of data you want to store
- and what each piece should look like.
- what must be present in that  */
+
+const castSchema = new mongoose.Schema({
+  name: String,
+  role: String,
+  character_name: String,
+  type: String,
+}, { _id: false }); // Disable _id inside cast array
+
 const movieSchema = new mongoose.Schema({
-  tmdbId: {
+  watchmodeId: {
     type: Number,
     required: true,
-    unique: true, 
+    unique: true,
   },
   title: {
     type: String,
@@ -28,13 +31,13 @@ const movieSchema = new mongoose.Schema({
     type: String,
   },
   genres: {
-    type: Array,
+    type: [String],
   },
   vote_average: {
     type: Number,
   },
   runtime: {
-    type: Number, 
+    type: Number,
   },
   language: {
     type: String,
@@ -42,16 +45,11 @@ const movieSchema = new mongoose.Schema({
   tagline: {
     type: String,
   },
-  casts:{
-    type:Array,
-
-  },
+  casts: [castSchema],
 }, {
-  timestamps: true, // this will add time at which movie added in the database means current time 
-
+  timestamps: true,
 });
 
-const Movie = mongoose.model("Movie", movieSchema); // this is model using movieschema
-
+const Movie = mongoose.model("Movie", movieSchema);
 
 export default Movie;

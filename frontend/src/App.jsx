@@ -34,7 +34,7 @@ const App = () => {
     <Route path='/Movies' element={<Movies/>}/>
     <Route path='/Movies/:id' element={<MoviesDetails/>}/>
     <Route path='/Movies/:id/:date' element = {<SeatLayout/>}/>
-    <Route path='/MyBookings' element={<MyBooking/>}/>
+    <Route path='/MyBooking' element={<MyBooking/>}/>
     <Route path='/Favroites' element={<Favroites/>}/>
     <Route path='/admin/*' element={user ? <Layout/> :(
       <div className='min-h-screen flex justify-center items-center'>

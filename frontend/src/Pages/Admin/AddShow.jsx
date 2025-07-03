@@ -20,18 +20,18 @@ const AddShow = () => {
   const [addingShow,setAddingShow] = useState(false)
 
   const fetchNowPlayingMovies = async () => {
-    // setNowPlayingMovies(dummyShowsData)  we are removing this dummy data and take data from api 
-    try{
+    setNowPlayingMovies(dummyShowsData)  //we are removing this dummy data and take data from api 
+    // try{
 
-      const {data} = await axios.get('/api/show/now-playing',{
-        headers : {Authorization : `Bearer ${await getToken()}`}
-      })
-      if(data.success){
-        setNowPlayingMovies(data.movies)
-      }
-    }catch(error){
+    //   const {data} = await axios.get('/api/show/now-playing',{
+    //     headers : {Authorization : `Bearer ${await getToken()}`}
+    //   })
+    //   if(data.success){
+    //     setNowPlayingMovies(data.movies)
+    //   }
+    // }catch(error){
 
-    }
+    // }
   };
   const handleDateTimeAdd = () => {
     if(!dateTimeInput) return ;
@@ -114,7 +114,8 @@ const payload = {
               key={movie.id} className={`relative max-w-40 cursor-pointer
             group-hover:not-hover:opacity-40 hover:-translate-y-1 transition duration-300`}>
               < div  className='relative rounded-lg  overflow-hidden'>
-                  <img src={image_base_url+movie.poster_path} alt=""  className='w-full object-cover brightness-90'/>
+                  <img src={ //image_base_url+
+                    movie.poster_path} alt=""  className='w-full object-cover brightness-90'/>
               
                 <div className='text-sm flex items-center justify-between
                 p-2 bg-black/70 w-full absolute bottom-0 left-0'>

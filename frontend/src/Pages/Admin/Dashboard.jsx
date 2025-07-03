@@ -5,8 +5,12 @@ import Loading from '../../Components/Loading';
 import Title from '../../Components/Admin/Title';
 import BlurCircle from '../../Components/BlurCircle';
 import { dateFormate } from '../../Lib/dateFormate';
+// import { useAppContext } from '../../context/AppContext';
+import toast from 'react-hot-toast';
 
 const Dashboard = () => {
+  // const {axios,getToken,user,image_base_url} = useAppContext()
+  
   const currency = import.meta.env.VITE_CURRENCY;
 
   const [DashboardData, setDashboardData] = useState({
@@ -44,11 +48,34 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setDashboardData(dummyDashboardData);
     setLoading(false);
+    // try{
+    //   const {data} = await axios.get('/api/admin/dashboard', {
+    //     headers: { Authorization: `Bearer ${await getToken()}` }
+    //   });
+    //   if(data.success){
+    //     setDashboardData(data.DashboardData);
+    //     setLoading(false);
+    //   }else{
+    //     toast.error(data.message || "Failed to fetch dashboard data");
+        
+    //   }
+      
+    // }
+    // catch(error){
+    //   console.error("Error fetching dashboard data:", error);
+    //   toast.error("Failed to fetch dashboard data");
+    // }
   };
 
   useEffect(() => {
+    // Fetch the dashboard data when the component mounts
+   // if(user){
     fetchDashboardData();
-  }, []);
+    //}
+    
+  }, [
+    //user
+    ]);
 
   return !loading ? (
     <>
@@ -82,7 +109,8 @@ const Dashboard = () => {
             <div key={show._id} className='w-55 rounded-lg overflow-hidden
             h-full pb-3 bg-primary/10 border border-primary/20 
             hover:-translate-y-1 transition duration-300'>
-                <img src={show.movie.poster_path} alt=""
+                <img src={ //image_base_url + 
+                show.movie.poster_path} alt=""
                 className='h-60 w-full object-cover' />
                 <p className='font-medium p-2 truncate'>{show.movie.title}</p>
                 <div className='flex items-center justify-between px-2'>

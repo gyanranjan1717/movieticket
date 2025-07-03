@@ -3,8 +3,13 @@ import { dummyShowsData } from '../../assets/assets';
 import Loading from '../../Components/Loading';
 import Title from '../../Components/Admin/Title';
 import { dateFormate } from '../../Lib/dateFormate';
+// import { useAppContext } from '../../context/AppContext';
 
 const ListShow = () => {
+  // const {axios,getToken,user} = useAppContext()
+    
+
+
     const currency = import.meta.env.VITE_CURRENCY
     const [shows,setShows] = useState([]);
     const [loading,setLoading] = useState(true);
@@ -21,6 +26,9 @@ const ListShow = () => {
             C1:"user_3"
           }
         }]);
+        // const {data} = await axios.get('/api/admin/all-shows', {
+        //   headers: { Authorization: `Bearer ${await getToken()}`} });
+        //   setShows(data.shows);
         setLoading(false);
 
       }
@@ -29,8 +37,12 @@ const ListShow = () => {
       }
     }
     useEffect(()=>{
-      getAllShows();
-    },[])
+     // if(user){
+        getAllShows();
+      //}
+    },[//user
+
+    ])
   return !loading ? (
     <>
       <Title text1="List" text2="Shows"/>

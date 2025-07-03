@@ -2,7 +2,7 @@ import mongoose from "mongoose"
 
 const showSchema = new mongoose.Schema(
   {
-    movie: { type: String, required: true, ref: 'movieModel' },
+    movie: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'movieModel' },
     showDateTime: { type: Date, required: true }, // Data e Hora da sessão
     showPrice: { type: Number, required: true },
     occupiedSeats: { type: Object, default: {} }, 
