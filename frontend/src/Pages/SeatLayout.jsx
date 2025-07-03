@@ -120,7 +120,7 @@ const renderSeats = (row, count = 9) => {
                 ))}
               </div>
           </div>
-          <button onClick={() => Navigate('/MyBookings')}
+          <button onClick={() => Navigate('/MyBooking')}
            className='flex items-center gap-1 mt-20 px-10 py-3 text-smbg-primary
            hover:bg-primary-dull transition rounded-full font-medium
            cursor-pointer active:scale-95
