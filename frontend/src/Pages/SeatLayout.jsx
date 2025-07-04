@@ -150,7 +150,7 @@ import isoTimeFormate from '../Lib/isoTimeFormate';
 import BlurCircle from '../Components/BlurCircle';
 import toast from 'react-hot-toast';
 import { useAppContext } from '../context/AppContext';
-import { set } from 'mongoose';
+
 
 const SeatLayout = () => {
   const groupRows = [["A", "B"], ["C", "D"], ["E", "F"], ["G", "H"], ["I", "J"]];
