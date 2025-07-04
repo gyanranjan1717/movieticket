@@ -22,34 +22,71 @@ export const getUserBookings = async (req, res) => {
 
 //API controller function to add favorite move in clerk user metadata
 
+// export const updateFavorite = async (req, res) => {
+//     try {
+//         const { movieId } = req.body
+//         const userId = req.auth().userId
+
+//         const user = await clerkClient.users.getUser(userId)
+//         if (!user.privateMetadata.favorites) {
+//             user.privateMetadata.favorites = []
+//         }
+
+//         if (!user.privateMetadata.favorites.includes(movieId)) {
+//             user.privateMetadata.favorites.push(movieId)
+//         } else {
+//             user.privateMetadata.favorites = user.privateMetadata.favorites.filter((item) => item !== movieId)
+//         }
+
+//        await clerkClient.users.updateUserMetadata(userId, {
+//   privateMetadata: {
+//     favorites: user.privateMetadata.favorites,
+//   },
+// });
+
+
+//         return res.status(200).json({ success: true, message: "Favoritos atualizado com sucesso", favorites: user.privateMetadata.favorites })
+
+//     } catch (error) {
+//         console.log(error)
+//         return res.status(500).json({ success: false, message: "erro ao adicionar ao favoritos" })
+//     }
+// }
+
 export const updateFavorite = async (req, res) => {
-    try {
-        const { movieId } = req.body
-        const userId = req.auth().userId
+  try {
+    const { movieId } = req.body;
+    const userId = req.auth().userId;
 
-        const user = await clerkClient.users.getUser(userId)
+    const user = await clerkClient.users.getUser(userId);
 
-        if (!user.privateMetadata.favorites) {
-            user.privateMetadata.favorites = []
-        }
+    // Safely get favorites
+    let favorites = user.privateMetadata.favorites || [];
 
-        if (!user.privateMetadata.favorites.includes(movieId)) {
-            user.privateMetadata.favorites.push(movieId)
-        } else {
-            user.privateMetadata.favorites = user.privateMetadata.favorites.filter((item) => item !== movieId)
-        }
-
-        await clerkClient.users.updateUserMetadata(userId, { privateMetadata: 
-            user.privateMetadata.favorites
-         });
-
-        return res.status(200).json({ success: true, message: "Favoritos atualizado com sucesso",favorites : user.privateMetadata.favorites })
-
-    } catch (error) {
-        console.log(error)
-        return res.status(500).json({ success: false, message: "erro ao adicionar ao favoritos" })
+    // Toggle favorite
+    if (!favorites.includes(movieId)) {
+      favorites.push(movieId);
+    } else {
+      favorites = favorites.filter((item) => item !== movieId);
     }
-}
+
+    // ✅ CORRECT WAY: wrap the favorites in an object
+    await clerkClient.users.updateUserMetadata(userId, {
+      privateMetadata: { favorites },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Favorites updated successfully",
+      favorites,
+    });
+  } catch (error) {
+    console.log("❌ Error in updateFavorite:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Error updating favorites" });
+  }
+};
 
 export const getFavorites = async (req, res) => {
     try {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useContext } from "react";
 import { createContext } from "react";
 import axios from "axios"
@@ -68,7 +68,7 @@ export const AppProvider = ({children}) => {
                 headers:{Authorization:`Bearer ${await getToken()}`,},});
 
                 if(data.success){
-                    setFavoriteMovies(data.favorites);
+                    setFavoriteMovies(data.movies);
                 }else{
                     toast.error(data.message)
                 }

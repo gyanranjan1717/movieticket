@@ -38,7 +38,10 @@ const NavBar = () => {
     <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/'>Theaters</Link>
     <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/'>releases</Link>
 {favoriteMovies.length > 0 &&  
- <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/Favroites'>Favroites</Link>}
+ <Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to='/Favroites'>
+   Favorites
+ </Link>}
+
   {/* } 
     {/* whenever menuicon display on small screen we have to  display cross icon by using that we can hide the small menu 
     */}

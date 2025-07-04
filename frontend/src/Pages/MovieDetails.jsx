@@ -234,11 +234,11 @@ useEffect(() => {
 
       if (data.success) {
         await fetchFavoriteMovies(); // Refresh favorites
+        setIsFavorite(!isFavorite);
         toast.success(
-          // isFavorite ? "Removed from favorites" :
+          isFavorite ? "Removed from favorites" :
            "Added to favorites"
         );
-        // setIsFavorite(!isFavorite); // Toggle state
       }
     } catch (error) {
       console.error("Error updating favorites:", error);
@@ -290,12 +290,13 @@ useEffect(() => {
               className='bg-gray-700 p-2.5 rounded-full transition cursor-pointer active:scale-95'
             >
               <HeartIcon
-                className={`w-5 h-5 ${
-                  favoriteMovies?.includes(id)
-                  // some(movie => movie._id === id)
-                   ? 'fill-primary text-primary' : ''
-                }`}
-              />
+  className={`w-5 h-5 ${
+    favoriteMovies?.some((movie) => movie._id === id)
+      ? 'fill-primary text-primary'
+      : ''
+  }`}
+/>
+
             </button>
           </div>
         </div>
