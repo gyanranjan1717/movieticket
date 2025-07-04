@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { assets } from '../assets/assets'
 import {MenuIcon,SearchIcon, TicketPlus, XIcon} from 'lucide-react'
 import { useClerk, UserButton, useUser } from '@clerk/clerk-react'
-// import { useAppContext } from '../context/AppContext'
+import { useAppContext } from '../context/AppContext'
 const NavBar = () => {
 
   const [IsOpen,setIsOpen] = useState(false)
@@ -11,7 +11,7 @@ const NavBar = () => {
   const {user} = useUser()
   const {openSignIn} = useClerk()
   const navigate = useNavigate()
-  // const {favoriteMovies} = useAppContext()
+  const {favoriteMovies} = useAppContext()
   return (
     <div className='fixed top-0 left-0 z-50 w-full flex items-center
     justify-between px-6 md:px-16 lg:px-36 py-5'>
@@ -37,9 +37,9 @@ const NavBar = () => {
     <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/Movies'>Movies</Link>
     <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/'>Theaters</Link>
     <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/'>releases</Link>
-{/* {favoriteMovies.length > 0 &&  */}
- <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/Favroites'>Favroites</Link>
-  {/* }  */}
+{favoriteMovies.length > 0 &&  
+ <Link onClick={()=>{scrollTo(0,0);setIsOpen(false)} } to='/Favroites'>Favroites</Link>}
+  {/* } 
     {/* whenever menuicon display on small screen we have to  display cross icon by using that we can hide the small menu 
     */}
 

@@ -2,6 +2,7 @@ import { clerkClient } from "@clerk/express"
 import Booking from "../models/bookingModel.js"
 import Movie from "../models/movieModel.js"
 
+//  API  controller function to get user bookings
 
 export const getUserBookings = async (req, res) => {
     try {
@@ -19,6 +20,7 @@ export const getUserBookings = async (req, res) => {
 }
 
 
+//API controller function to add favorite move in clerk user metadata
 
 export const updateFavorite = async (req, res) => {
     try {
@@ -37,9 +39,11 @@ export const updateFavorite = async (req, res) => {
             user.privateMetadata.favorites = user.privateMetadata.favorites.filter((item) => item !== movieId)
         }
 
-        await clerkClient.users.updateUserMetadata(userId, { privateMetadata: user.privateMetadata })
+        await clerkClient.users.updateUserMetadata(userId, { privateMetadata: 
+            user.privateMetadata.favorites
+         });
 
-        return res.status(200).json({ success: true, message: "Favoritos atualizado com sucesso" })
+        return res.status(200).json({ success: true, message: "Favoritos atualizado com sucesso",favorites : user.privateMetadata.favorites })
 
     } catch (error) {
         console.log(error)
@@ -50,14 +54,14 @@ export const updateFavorite = async (req, res) => {
 export const getFavorites = async (req, res) => {
     try {
         const user = await clerkClient.users.getUser(req.auth().userId)
-        const favorites = user.privateMetadata.favorites
+        const favorites = user.privateMetadata.favorites || []
 
-
+// getting movies from the database based on the favorites array
         const movies = await Movie.find({ _id: { $in: favorites } })
 
         return res.status(200).json({ success: true, movies })
     } catch (error) {
         console.log(error.message)
-        return res.status(200).json({ success: false, message: "Erro ao buscar favoritos" })
+        return res.status(500).json({ success: false, message: "Erro ao buscar favoritos" })
     }
 }

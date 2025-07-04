@@ -5,14 +5,14 @@ import Show from "../models/showModel.js";
 
 export const getNowPlayingMovies = async (req, res) => {
   try {
-    const apiKey = 'G04jZhYZiUNZaetse7PtKjohDHr2GxVnGutpu8FQ';
+    const apiKey = process.env.WATCHMODE_API_KEY ;
 
     // Step 1: Get now-playing movies (limit to 5)
     const nowPlayingResponse = await axios.get(
       `https://api.watchmode.com/v1/releases/?apiKey=${apiKey}&regions=US`
     );
 
-    const releases = nowPlayingResponse.data.releases.slice(0, 5); // Only first 5
+    const releases = nowPlayingResponse.data.releases.slice(0, 10); // Only first 5
 
     // Step 2: Get details for each of the first 5 movies
     const detailedMovies = await Promise.all(
@@ -49,7 +49,7 @@ export const addShow = async (req, res) => {
     let movie = await Movie.findOne({ watchmodeId: movieId });
 
     if (!movie) {
-      const apiKey = 'G04jZhYZiUNZaetse7PtKjohDHr2GxVnGutpu8FQ';
+      const apiKey = process.env.WATCHMODE_API_KEY ;
 
       // Step 1: Fetch movie details
       const detailsResponse = await axios.get(
@@ -69,7 +69,7 @@ const castCrewData = Array.isArray(castCrewResponse.data)
 
 // Step 3: Structure cast data (primary: cast, fallback: important crew)
 let mainCast = castCrewData
-  .filter((person) => person.type === "Cast")
+  .filter((person) => person.type === "Cast" || "Crew")
   .slice(0, 10)
   .map((person) => ({
     name: person.full_name,
@@ -95,11 +95,6 @@ if (mainCast.length === 0) {
       type: person.type,
     }));
 }
-
-// Optional: Log for debug
-console.log("✅ Final Casts or Crew used:", mainCast);
-
-
       // Step 4: Create movie object
       const movieDetails = {
         watchmodeId: data.id,
@@ -107,8 +102,7 @@ console.log("✅ Final Casts or Crew used:", mainCast);
         poster: data.poster,
         backdrop: data.backdrop || "",
         overview: data.plot_overview,
-        releaseDate: data.source_release_date 
-        // || data.release_date
+        releaseDate: data.source_release_date || data.release_date
         ,
         genres: data.genre_names,
         vote_average: data.user_rating,
@@ -135,9 +129,11 @@ console.log("✅ Final Casts or Crew used:", mainCast);
         });
       });
     });
-
-    const createdShows = await Show.insertMany(showsToCreate);
-
+    
+      const createdShows = await Show.insertMany(showsToCreate);
+    
+    
+    
     return res.status(201).json({
       success: true,
       message: "Shows added successfully",
@@ -157,22 +153,19 @@ console.log("✅ Final Casts or Crew used:", mainCast);
 
 // export const getNowPlayingMovies = async (req, res) => {
 //   try {
-//     const response = await axios.get('https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=1', {
+//     const response = await axios.get('https://api.themoviedb.org/3/movie/now_playing', {
 //       headers: {
 //         Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
 //         accept: `application/json`
 //       },
-
-   
 //     });
-
 //     const movies = response.data.results;
 //     res.json({ success: true, movies });
 //   } catch (error) {
 //     console.error("TMDB API error:", error.message);
 //     res.json({ success: false, message: error.message });
-//   }
-// };
+//   }};
+// //  these code from the great stack 
 
 
 // API to add a new show to the database 
@@ -180,7 +173,7 @@ console.log("✅ Final Casts or Crew used:", mainCast);
 //   try {
 //     const { movieId, showsInput, showPrice } = req.body;
 
-//     let movie = await Movie.findOne({ _Id: movieId });
+//     let movie = await Movie.findById({movieId });
 
 //     if (!movie) {
 //       // fetch from TMDB using proxy
@@ -203,7 +196,7 @@ console.log("✅ Final Casts or Crew used:", mainCast);
 //       const movieCreditsData = movieCreditsResponse.data;
 
 //       const movieDetails = {
-//         tmdbId: movieApiData.id,
+//         watchmodeId: movieApiData.id,
 //         title: movieApiData.title,
 //         poster: movieApiData.poster_path,
 //         backdrop: movieApiData.backdrop_path,
@@ -253,30 +246,57 @@ console.log("✅ Final Casts or Crew used:", mainCast);
 
 //for get all shows 
 
-export const getShows = async (req, res) => {
-    try {
+// export const getShows = async (req, res) => {
+//     try {
 
-        const shows = await Show.find({ showDateTime: { $gte: new Date()  } })
-            .populate("movie")
-            .sort({ showDateTime: 1 });
+//         const shows = await Show.find({ showDateTime: { $gte: new Date()  } })
+//             .populate("movie")
+//             .sort({ showDateTime: 1 });
 
-        //filter unique shows
+//         //filter unique shows
 
 
-        // const uniqueShows = Array.from(map.values());
-        const uniqueShows = new Set(shows.map(show => show.movie));
+//         // const uniqueShows = Array.from(map.values());
+//         const uniqueShows = new Set(shows.map(show => show.movie));
 
-        return res.status(200).json({ success: true, shows: uniqueShows });
-    } catch (error) {
-        console.error("Erro ao buscar shows:", error);
-        return res
-            .status(500)
-            .json({ success: false, message: "Erro interno, tente novamente." });
-    }
-};
+//         return res.status(200).json({ success: true, shows: uniqueShows });
+//     } catch (error) {
+//         console.error("Erro ao buscar shows:", error);
+//         return res
+//             .status(500)
+//             .json({ success: false, message: "Erro interno, tente novamente." });
+//     }
+// };
 
 
 // api to get a single show from the databse 
+
+
+export const getShows = async (req, res) => {
+  try {
+    const shows = await Show.find({ showDateTime: { $gte: new Date() } })
+      .populate("movie")
+      .sort({ showDateTime: 1 });
+
+    // Filter one show per unique movie
+    const uniqueMap = new Map();
+    shows.forEach(show => {
+      const movieId = show.movie._id.toString();
+      if (!uniqueMap.has(movieId)) {
+        uniqueMap.set(movieId, show);
+      }
+    });
+
+    const uniqueShows = Array.from(uniqueMap.values());
+
+    return res.status(200).json({ success: true, shows: uniqueShows });
+  } catch (error) {
+    console.error("Erro ao buscar shows:", error);
+    return res.status(500).json({ success: false, message: "Erro interno, tente novamente." });
+  }
+};
+
+
 export const getShow = async (req,res) =>{
     try{
         const {movieId} = req.params;
