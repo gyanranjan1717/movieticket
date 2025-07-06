@@ -21,6 +21,7 @@ export const getNowPlayingMovies = async (req, res) => {
           const detailsResponse = await axios.get(
             `https://api.watchmode.com/v1/title/${movie.id}/details/?apiKey=${apiKey}`
           );
+          
           return {
             ...movie,
             details: detailsResponse.data,

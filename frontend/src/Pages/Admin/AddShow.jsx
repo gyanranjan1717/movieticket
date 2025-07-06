@@ -126,27 +126,27 @@ const AddShow = () => {
       <div className="overflow-x-auto pb-4">
         <div className="group flex flex-wrap gap-4 mt-4 w-max">
           {nowPlayingMovies.map((movie) => {
-            const posterUrl = movie.poster
-              ? movie.poster.replace(/_w\d+/, "_w780")
-              : "/collection.jpg"; // Ensure poster URL is set correctly
+            const posterUrl = movie.details?.posterLarge
+              || movie.details?.poster
+              || movie.poster_url
+              || "https://www.movienewz.com/img/films/poster-holder.jpg";  // Ensure poster URL is set correctly
+              
            return ( <div
               key={movie.id}
               onClick={() => setSelectedMovie(movie.id)}
               className={`relative max-w-40 cursor-pointer
               group-hover:not-hover:opacity-40 hover:-translate-y-1 transition duration-300`}
             >
-              <div className="relative rounded-lg overflow-hidden">
+              <div className="w-[185px] h-[275px] shadow-md relative rounded-lg overflow-hidden">
                 <img
-  src={posterUrl}
-  onError={(e) => (e.target.src = "/collection.jpg")}
-  alt={movie.title}
-  className="w-full object-cover brightness-90"
-  loading="lazy"
-  referrerPolicy="no-referrer"
-/>
+                  src={posterUrl}
+                  alt={movie.title}
+                  className="w-full h-full object-cover brightness-90"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
 
-
-                <div className="text-sm flex items-center justify-between
+        <div className="text-sm flex items-center justify-between
                   p-2 bg-black/70 w-full absolute bottom-0 left-0"
                 >
                   <p className="flex items-center gap-1 text-gray-400">
@@ -160,7 +160,7 @@ const AddShow = () => {
                   </p> */}
                 </div>
               </div>
-
+                    
               {selectedMovie === movie.id && (
                 <div className="absolute top-2 right-2 flex items-center justify-center bg-primary h-6 w-6 rounded">
                   <CheckIcon className="w-4 h-4 text-white" strokeWidth={2.5} />
@@ -174,7 +174,7 @@ const AddShow = () => {
 })}
         </div>
       </div>
-
+     
       {/* Show Price Input */}
       <div className="mt-8">
         <label className="block text-sm font-medium mb-2">Show Price</label>

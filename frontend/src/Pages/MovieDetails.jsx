@@ -250,7 +250,7 @@ useEffect(() => {
     <div className='px-6 md:px-16 lg:px-40 pt-30 md:pt-50'>
       <div className='flex flex-col md:flex-row gap-8 max-w-6xl mx-auto'>
         <img
-          src={show.movie.poster || show.movie.backdrop_path || "/collection.jpg"}
+          src={show.movie.poster || show.movie.backdrop_path || "https://www.movienewz.com/img/films/poster-holder.jpg"}
           alt=""
           className='max-md:mx-auto rounded-2xl h-104 max-w-70 object-cover'
         />
@@ -308,7 +308,7 @@ useEffect(() => {
           {show.movie.casts?.slice(0, 12).map((cast, index) => (
             <div key={index} className='flex flex-col items-center text-center'>
               <img
-                src={cast.profile_path || "/collection.jpg"}
+                src={cast.profile_path || "https://www.w3schools.com/howto/img_avatar.png"}
                 alt=""
                 className='rounded-full h-20 md:h-20 aspect-square object-cover'
               />
