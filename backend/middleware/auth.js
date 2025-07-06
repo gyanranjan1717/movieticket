@@ -16,3 +16,7 @@ export const protectAdmin = async (req, res, next) => {
         return res.status(500).json({ sucess: false, message: "not authorized" })
     }
 }
+
+// This middleware checks if the user is authenticated and has the admin role.
+// If the user is not authenticated or does not have the admin role, it returns a 401 Unauthorized response.
+// If the user is authenticated and has the admin role, it calls the next middleware or route handler to proceed with the request.

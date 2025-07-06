@@ -241,8 +241,9 @@ const SeatLayout = () => {
           headers: {Authorization: `Bearer ${await getToken()}` }
       })
       if(data.success){
-        toast.success("Tickets booked successfully!");
-        Navigate('/MyBooking');
+        // toast.success("Tickets booked successfully!");
+        // Navigate('/MyBooking');
+        window.location.href = data.url; // Redirect to payment link
       }else {
         toast.error("Failed to book tickets");
       }

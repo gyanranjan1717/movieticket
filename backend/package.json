@@ -21,7 +21,9 @@
     "express": "^5.1.0",
     "https-proxy-agent": "^7.0.6",
     "inngest": "^3.39.2",
-    "mongoose": "^8.16.1"
+    "mongoose": "^8.16.1",
+    "stripe": "^18.3.0",
+    "svix": "^1.68.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

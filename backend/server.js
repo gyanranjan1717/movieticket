@@ -12,12 +12,17 @@ import showRouter from './routes/showRoutes.js';
 import bookingRouter from './routes/bookingRoutes.js';
 import adminRouter from './routes/adminRoutes.js';
 import userRouter from './routes/userRoutes.js';
+import { stripeWebhooks } from './controllers/stripeWebhooks.js';
 // import tmdbRouter from './routes/tmdbRoutes.js'; // ✅ NEW IMPORT
 
 const app = express();
 const port = 3001;
 
 await connectDB();
+
+//stripe webhooks
+
+app.use('/api/stripe',express.raw({type:'application/json'}),stripeWebhooks) // here path must be same as the stripe dashboard
 
 // middleware 
 app.use(express.json());

@@ -16,6 +16,7 @@ import AddShow from './Pages/Admin/AddShow';
 import ListShow from './Pages/Admin/ListShow';
 import ListBooking from './Pages/Admin/ListBooking';
 import { useAppContext } from './context/AppContext';
+import Loading from './Components/Loading';
 
 const App = () => {
   const location = useLocation();
@@ -43,6 +44,7 @@ const App = () => {
         <Route path="/movies/:id" element={<MovieDetails />} />
         <Route path="/movies/:id/:date" element={<SeatLayout />} />
         <Route path="/mybooking" element={<MyBooking />} />
+         <Route path="/loading/:nextUrl" element={<Loading />} />
         <Route path="/favroites" element={<Favorites />} />
 
         {/* Admin routes */}
