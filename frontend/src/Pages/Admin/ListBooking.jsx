@@ -15,7 +15,7 @@ const ListBooking = () => {
     // setBooking(dummyBookingData)
     // setIsLoading(false);
     try {
-      const { data } = await axios.get('/api/admin/all-booking', {
+      const { data } = await axios.get('/api/admin/all-bookings', {
         headers: { Authorization: `Bearer ${await getToken()}` },
       });
       if (data.success) {
@@ -56,9 +56,8 @@ const ListBooking = () => {
               const showDateTime = item.show?.showDateTime
                 ? dateFormate(item.show.showDateTime)
                 : "N/A";
-              const seatList = item.bookedSeats
-                ? Object.keys(item.bookedSeats).join(', ')
-                : "N/A";
+              const seatList = item.bookedSeats?.join(', ') || "N/A";
+
               const amount = item.amount || 0;
 
               return (

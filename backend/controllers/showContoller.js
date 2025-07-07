@@ -59,7 +59,7 @@ export const addShow = async (req, res) => {
       const data = detailsResponse.data;
 
       // Step 2: Fetch cast & crew
-      // Step 2: Fetch cast & crew
+     
 const castCrewResponse = await axios.get(
   `https://api.watchmode.com/v1/title/${movieId}/cast-crew/?apiKey=${apiKey}`
 );
