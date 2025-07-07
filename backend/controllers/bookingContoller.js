@@ -1,8 +1,8 @@
 import Booking from "../models/bookingModel.js";
 import Show from "../models/showModel.js";
 import stripe from "stripe"
-import { Inngest } from "inngest";
-
+// import { Inngest } from "inngest";
+import { inngest } from "../inngest/index.js";
 export const checkSeatsAvailiability = async (showId, selectedSeats) => {
   try {
     const showData = await Show.findById(showId);
@@ -77,12 +77,27 @@ export const createBooking = async (req, res) => {
 
     await booking.save()
     // run inngest sheduler function to check payment status after 10 minutes
-    await inngest.send({
-      name: "app/checkpayment",
-      data: {
-        bookingId: booking._id.toString(),
-      },
-    })
+    
+    
+    // await inngest.send({
+    //   name: "app/checkpayment",
+    //   data: {
+    //     bookingId: booking._id.toString(),
+    //   },
+    // })
+     
+
+          try{
+          await  inngest.send({
+            name: "app/checkpayment",
+            data: {
+              bookingId: booking._id.toString(),
+            },
+          })
+          }catch(error){
+            console.log("Error in sending Inngest event:", error.message);
+          }
+
 
 
 
@@ -95,10 +110,10 @@ export const createBooking = async (req, res) => {
       url:session.url
     });
   } catch (error) {
-    console.log(error.message);
+    console.log("booking error:",error.message);
     return res
       .status(500)
-      .json({ success: false, message: "Booking failed" });
+      .json({ success: false, message: "Booking failed",error: error.message });
   }
 };
 

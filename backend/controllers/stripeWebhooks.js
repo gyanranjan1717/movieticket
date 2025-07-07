@@ -1,5 +1,6 @@
 import stripe from 'stripe'
 import Booking from '../models/bookingModel.js'
+import { inngest } from '../inngest/index.js';
 
 
 
@@ -15,7 +16,7 @@ export const stripeWebhooks = async (req, res) => {
         // event = stripeInstance.webhooks.constructEvent(req.body,sig.process.env.STRIPE_WEBHOOK_SECRET);
 event = stripeInstance.webhooks.constructEvent(
   req.body,
-  sig,
+  sig.
   process.env.STRIPE_WEBHOOK_SECRET
 );
     }catch(error){
@@ -41,6 +42,21 @@ event = stripeInstance.webhooks.constructEvent(
                     isPaid: true,
                     paymentLink:""
                 })
+                //send confirmation email
+                // await inngest.send({
+                //     name:"app/show.booked",
+                //     data:{bookingId}
+                // })
+                try {
+                    await inngest.send({
+                        name: "app/show.booked",
+                        data: { bookingId }
+                    });
+                    } catch (err) {
+                    console.error("Inngest send failed:", err);
+                    }
+
+                
         }
         break;
         default:
