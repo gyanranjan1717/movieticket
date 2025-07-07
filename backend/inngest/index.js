@@ -6,10 +6,10 @@ import path from "path";
 import sendEmail from "../configs/nodeMailer.js";
 import dotenv from "dotenv";
 dotenv.config();
-import pkg from 'react';
-const { use } = pkg
+// import pkg from 'react';
+// const { use } = pkg
 
-import { send } from "process";
+// import { send } from "process";
 
 // Create a client to send and receive events
 // export const inngest = new Inngest({ id: "movie-ticket-booking" });
