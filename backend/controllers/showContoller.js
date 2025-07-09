@@ -1,9 +1,7 @@
 import axios from "axios";
 import Movie from "../models/movieModel.js";
 import Show from "../models/showModel.js";
-// import { inngest } from "inngest";
-// import pkg from 'inngest';
-// const { inngest } = pkg;
+
 import { inngest } from '../inngest/index.js';
 export const getNowPlayingMovies = async (req, res) => {
   try {
@@ -166,127 +164,6 @@ if (mainCast.length === 0) {
 };
 
 
-
-
-// export const getNowPlayingMovies = async (req, res) => {
-//   try {
-//     const response = await axios.get('https://api.themoviedb.org/3/movie/now_playing', {
-//       headers: {
-//         Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-//         accept: `application/json`
-//       },
-//     });
-//     const movies = response.data.results;
-//     res.json({ success: true, movies });
-//   } catch (error) {
-//     console.error("TMDB API error:", error.message);
-//     res.json({ success: false, message: error.message });
-//   }};
-// //  these code from the great stack 
-
-
-// API to add a new show to the database 
-// export const addShow = async (req, res) => {
-//   try {
-//     const { movieId, showsInput, showPrice } = req.body;
-
-//     let movie = await Movie.findById({movieId });
-
-//     if (!movie) {
-//       // fetch from TMDB using proxy
-//       const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
-//         axios.get(`https://api.themoviedb.org/3/movie/${movieId}`, {
-//           headers: {
-//             Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-//           },
-         
-//         }),
-//         axios.get(`https://api.themoviedb.org/3/movie/${movieId}/credits`, {
-//           headers: {
-//             Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
-//           },
-  
-//         }),
-//       ]);
-
-//       const movieApiData = movieDetailsResponse.data;
-//       const movieCreditsData = movieCreditsResponse.data;
-
-//       const movieDetails = {
-//         watchmodeId: movieApiData.id,
-//         title: movieApiData.title,
-//         poster: movieApiData.poster_path,
-//         backdrop: movieApiData.backdrop_path,
-//         overview: movieApiData.overview,
-//         releaseDate: movieApiData.release_date,
-//         genres: movieApiData.genres.map((g) => g.name),
-//         vote_average: movieApiData.vote_average,
-//         casts: movieCreditsData.cast, // 🔧 fix: you had movieApiData.cast by mistake
-//         runtime: movieApiData.runtime,
-//         language: movieApiData.original_language,
-//         tagline: movieApiData.tagline || "",
-//       };
-
-//       movie = await Movie.create(movieDetails);
-//     }
-
-//     // Create show slots
-//     const showsToCreate = [];
-//     showsInput.forEach((show) => {
-//       const showDate = show.date;
-//       show.time.forEach((time) => {
-//         const dateTimeString = `${showDate}T${time}`;
-// showsToCreate.push({
-//   movie: movie._id,
-//   showDateTime: new Date(dateTimeString),
-//   showPrice,
-//   occupiedSeats: {}
-// });
-
-//       });
-//     });
-
-//     const createdShows = await Show.insertMany(showsToCreate);
-
-//     return res
-//       .status(201)
-//       .json({ success: true, message: "Shows added successfully", createdShows });
-
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//     //   .status(500)
-//       .json({ success: false, message: "Error on addShow" });
-//   }
-// };
-
-
-//for get all shows 
-
-// export const getShows = async (req, res) => {
-//     try {
-
-//         const shows = await Show.find({ showDateTime: { $gte: new Date()  } })
-//             .populate("movie")
-//             .sort({ showDateTime: 1 });
-
-//         //filter unique shows
-
-
-//         // const uniqueShows = Array.from(map.values());
-//         const uniqueShows = new Set(shows.map(show => show.movie));
-
-//         return res.status(200).json({ success: true, shows: uniqueShows });
-//     } catch (error) {
-//         console.error("Erro ao buscar shows:", error);
-//         return res
-//             .status(500)
-//             .json({ success: false, message: "Erro interno, tente novamente." });
-//     }
-// };
-
-
-// api to get a single show from the databse 
 
 
 export const getShows = async (req, res) => {

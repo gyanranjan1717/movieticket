@@ -22,37 +22,6 @@ export const getUserBookings = async (req, res) => {
 
 //API controller function to add favorite move in clerk user metadata
 
-// export const updateFavorite = async (req, res) => {
-//     try {
-//         const { movieId } = req.body
-//         const userId = req.auth().userId
-
-//         const user = await clerkClient.users.getUser(userId)
-//         if (!user.privateMetadata.favorites) {
-//             user.privateMetadata.favorites = []
-//         }
-
-//         if (!user.privateMetadata.favorites.includes(movieId)) {
-//             user.privateMetadata.favorites.push(movieId)
-//         } else {
-//             user.privateMetadata.favorites = user.privateMetadata.favorites.filter((item) => item !== movieId)
-//         }
-
-//        await clerkClient.users.updateUserMetadata(userId, {
-//   privateMetadata: {
-//     favorites: user.privateMetadata.favorites,
-//   },
-// });
-
-
-//         return res.status(200).json({ success: true, message: "Favoritos atualizado com sucesso", favorites: user.privateMetadata.favorites })
-
-//     } catch (error) {
-//         console.log(error)
-//         return res.status(500).json({ success: false, message: "erro ao adicionar ao favoritos" })
-//     }
-// }
-
 export const updateFavorite = async (req, res) => {
   try {
     const { movieId } = req.body;

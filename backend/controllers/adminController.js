@@ -3,18 +3,6 @@ import Show from "../models/showModel.js"
 import User from "../models/User.js"
 import { clerkClient } from "@clerk/express";
 
-// export const isAdmin = async (req, res) => {
-//     try {
-//         const { userId } = req.auth();
-//         const user = await clerkClient.users.getUser(userId);
-//         const isAdmin = user.privateMetadata.role === 'admin';
-//         return res.status(200).json({ success: true, isAdmin });
-//     } catch (error) {
-//         console.log(error);
-//         return res.status(500).json({ success: false, isAdmin: false });
-//     }
-// };
-// this is another way to verify that is double verify
 
 // API to check if the user is an admin
 export const isAdmin = async (req, res) => {
