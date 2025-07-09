@@ -1,8 +1,10 @@
 import axios from "axios";
 import Movie from "../models/movieModel.js";
 import Show from "../models/showModel.js";
-import { Inngest } from "inngest";
-
+// import { inngest } from "inngest";
+// import pkg from 'inngest';
+// const { inngest } = pkg;
+import { inngest } from '../inngest/index.js';
 export const getNowPlayingMovies = async (req, res) => {
   try {
     const apiKey = process.env.WATCHMODE_API_KEY ;
@@ -133,14 +135,21 @@ if (mainCast.length === 0) {
     
       const createdShows = await Show.insertMany(showsToCreate);
     
-      // trigger Inngest function to send notifications
-      await Inngest.send({
-        name: "app/show.added",
-        data: {
-          movieTitle: movie.title,
-          // movieId: movie._id.toString(),
-        },
-      });
+      //Step 6 :trigger Inngest function to send notifications 0f show added by the admin
+
+      try {
+        await inngest.send({
+          name: "app/show.added",
+          data: {
+            movieTitle: movie.title,
+            movieId: movie._id.toString(),
+          },
+        });
+      } catch (err) {
+        console.warn("Inngest error:", err.message);
+      }
+
+    // Step 7: Return response
     
     return res.status(201).json({
       success: true,

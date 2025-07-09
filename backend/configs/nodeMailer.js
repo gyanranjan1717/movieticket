@@ -9,8 +9,15 @@ auth:{
 },
 });
 
+
 const sendEmail = async (to,subject,body)=>{
-   const response = await transporter.sendMail({
+     if (!to || typeof to !== "string" || to.trim() === "") {
+        throw new Error("Recipient email address is missing or invalid.");
+    }
+    
+    console.log("Sending email to:", to);
+    
+    const response = await transporter.sendMail({
         from: process.env.SENDER_EMAIL,
         to,
         subject,
