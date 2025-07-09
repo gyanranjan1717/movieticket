@@ -6,6 +6,7 @@ import path from "path";
 import sendEmail from "../configs/nodeMailer.js";
 import dotenv from "dotenv";
 dotenv.config();
+import { DateTime } from "luxon";
 // import pkg from 'react';
 // const { use } = pkg
 
@@ -93,43 +94,92 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
 );
 
 //Inngest function to send email to user after booking is created
- const sendBookingConfirmationEmail = inngest.createFunction(
-    {id:"send-booking-confirmation-email"},
-    {event:"app/show.booked"},
-    async ({event, step}) => {
-        const {bookingId} = event.data;
+//  const sendBookingConfirmationEmail = inngest.createFunction(
+//     {id:"send-booking-confirmation-email"},
+//     {event:"app/show.booked"},
+//     async ({event, step}) => {
+//         const {bookingId} = event.data;
 
-        const booking = await Booking.findById(bookingId).populate({
-            path: 'show',
-            populate: {
-                path: 'movie',
-                model: 'Movie'
-            }
-        }).populate('user');
+//         const booking = await Booking.findById(bookingId).populate({
+//             path: 'show',
+//             populate: {
+//                 path: 'movie',
+//                 model: 'Movie'
+//             }
+//         }).populate('user');
         
-         await sendEmail({
-            to:booking.user.email,
-            subject:`Booking Confirmation for ${booking.show.movie.title}`,
-            body:`
-            <div style="font-family: Arial,sans-serif;line-height: 1.6;">
-            <h2> Hi ${booking.user.name},</h2>
-            <p>
-            your booking for <srong style="color:#F84565;>"${booking.show.movie.title} is confirmed.</strong></p>
-            <p>
-            <p>
-            <strong>Date:</strong> ${new Date(booking.show.showDateTime).toLocaleDateString('en-US',{timeZone:'Asia/Kolkata '})}<br>
-            <strong>Time:</strong> ${new Date(booking.show.showDateTime).toLocaleTimeString('en-US',{timeZone:'Asia/Kolkata '})}<br>
-            </p>
-             <p>Enjoy the Show!</p>
-             <p>Thanks for booking woth us!<br>-ShowTime Team</p>
+//          await sendEmail({
+//             to:booking.user.email,
+//             subject:`Booking Confirmation for ${booking.show.movie.title}`,
+//             body:`
+//             <div style="font-family: Arial,sans-serif;line-height: 1.6;">
+//             <h2> Hi ${booking.user.name},</h2>
+//             <p>
+//             your booking for <srong style="color:#F84565;>"${booking.show.movie.title} is confirmed.</strong></p>
+//             <p>
+//             <p>
+
+//             <strong>Date:</strong> ${new Date(booking.show.showDateTime).toLocaleDateString('en-US',{timeZone:'Asia/Kolkata'})}<br>
+            
+//             <strong>Time:</strong> ${new Date(booking.show.showDateTime).toLocaleTimeString('en-US',{timeZone:'Asia/Kolkata'})}<br>
+            
+//             </p>
+//              <p>Enjoy the Show!</p>
+//              <p>Thanks for booking woth us!<br>-ShowTime Team</p>
         
-            </div
-            `
-         })
+//             </div
+//             `
+//          })
 
 
-    }
- )
+//     }
+//  )
+
+const sendBookingConfirmationEmail = inngest.createFunction(
+  { id: "send-booking-confirmation-email" },
+  { event: "app/show.booked" },
+  async ({ event, step }) => {
+    const { bookingId } = event.data;
+
+    const booking = await Booking.findById(bookingId)
+      .populate({
+        path: "show",
+        populate: {
+          path: "movie",
+          model: "Movie",
+        },
+      })
+      .populate("user");
+
+    // Format Date & Time using luxon
+    const showDateTime = DateTime.fromISO(booking.show.showDateTime, {
+      zone: "Asia/Kolkata",
+    });
+
+    const formattedDate = showDateTime.toLocaleString(DateTime.DATE_MED);
+    const formattedTime = showDateTime.toLocaleString(DateTime.TIME_SIMPLE);
+
+    // Send email
+    await sendEmail({
+      to: booking.user.email,
+      subject: `Booking Confirmation for ${booking.show.movie.title}`,
+      body: `
+        <div style="font-family: Arial,sans-serif; line-height: 1.6;">
+          <h2>Hi ${booking.user.name},</h2>
+          <p>Your booking for <strong style="color:#F84565;">${booking.show.movie.title}</strong> is confirmed.</p>
+
+          <p>
+            <strong>Date:</strong> ${formattedDate}<br>
+            <strong>Time:</strong> ${formattedTime}<br>
+          </p>
+
+          <p>Enjoy the show!</p>
+          <p>Thanks for booking with us!<br>- ShowTime Team</p>
+        </div>
+      `,
+    });
+  }
+);
 
 // inngest function to send reminder
 const sendShowReminders = inngest.createFunction(
