@@ -1,32 +1,18 @@
 import React, { useEffect, useState, useRef } from "react";
-import axios from "axios";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import Loading from "./Loading";
 import { Link } from "react-router-dom";
-import image1 from '../assets/image.png';
 import BlurCircle from "./BlurCircle";
-import { movies } from "../assets/assets";
-import { assets } from "../assets/assets";
-// const movies = [
-//   { id: 1,year:2033, title: "Movie 1", image: image1 }, // ✅ now works as URL
-//   { id: 2, title: "Movie 2", image: "https://i.pinimg.com/736x/14/27/58/1427586be74ac26b3a4979a7fd1ab52a.jpg" },
-//   { id: 3, title: "Movie 3", image: "https://image.tmdb.org/t/p/original/4VFRn5xcD8o3qUMrSShm3I6zpfl.jpg" },
-//   { id: 4, title: "Movie 4", image: "https://image.tmdb.org/t/p/original/9m00IVxGymmltmbYlWOyBAFCE9B.jpg" },
-//   { id: 5, title: "Movie 5", image: "https://i.pinimg.com/736x/46/5e/e5/465ee5353c668ae6212977ff876be19d.jpg" },
-// ];
+import Loading from "./Loading";
+import { movies } from "../assets/assets"; // Ensure each movie has `logo`, `title`, `genres`, etc.
 
 export default function MovieSlider() {
-
   const [currentIndex, setCurrentIndex] = useState(0);
   const indexRef = useRef(currentIndex);
 
-  // Keep ref updated
   useEffect(() => {
     indexRef.current = currentIndex;
   }, [currentIndex]);
 
- 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "ArrowRight" && indexRef.current < movies.length - 1) {
@@ -37,9 +23,8 @@ export default function MovieSlider() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [movies.length]);
+  }, []);
 
-  // Auto-slide every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentIndex((prev) =>
@@ -47,114 +32,116 @@ export default function MovieSlider() {
       );
     }, 3000);
     return () => clearInterval(interval);
-  }, [movies.length]);
+  }, []);
 
-  if (movies.length === 0) {
-  return(
-    
-  <Loading/>)
-
-}
-
-
+  if (!movies.length) return <Loading />;
 
   return (
-    <div className="w-screen h-screen flex items-center justify-center bg-black-800">
-         <BlurCircle top="0" right="-80px" />
-        <BlurCircle bottom="0" left="-80px"/>
+    <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
+      <BlurCircle top="0" right="-80px" />
+      <BlurCircle bottom="0" left="-80px" />
+
       <div className="relative w-[90vw] overflow-visible">
-        {/* Slide container */}
-        <BlurCircle top="0" right="-80px" />
-        <BlurCircle bottom="0" left="-80px"/>
         <div
-          className="flex transition-transform duration-500"
+          className="flex transition-transform duration-700 ease-in-out"
           style={{
             transform: `translateX(-${currentIndex * 80}%)`,
           }}
         >
           {movies.map((movie, index) => (
-  <div
-    key={movie._id || index}
-    className="w-[80%] mx-4 flex-shrink-0 rounded-xl overflow-hidden shadow-2xl transition-all duration-500"
-    style={{
-      transform: index === currentIndex ? "scale(1)" : "scale(0.9)",
-      zIndex: index === currentIndex ? 10 : 5,
-    }}
-  >
-    <div className="relative w-full h-[75vh] group rounded-xl overflow-hidden">
-      <Link to={`/Movies`}>
-        <img
-          src={movie.backdrop_path}
-          alt={movie.title}
-          className="w-full h-full object-cover transition duration-700 ease-in-out group-hover:scale-105 brightness-[0.7] cursor-pointer"
-        />
-      </Link>
+            <div
+              key={movie._id || index}
+              className={`w-[80%] mx-4 flex-shrink-0 rounded-2xl overflow-hidden 
+              transition-all duration-700 transform shadow-[0_10px_40px_rgba(0,0,0,0.6)] 
+              ${index === currentIndex ? "scale-100" : "scale-95 opacity-70"} group`}
+              style={{ zIndex: index === currentIndex ? 10 : 5 }}
+            >
+              <div className="relative w-full h-[75vh] rounded-xl overflow-hidden">
+                <Link to={`/Movies`}>
+                  <img
+                    src={movie.backdrop_path}
+                    alt={movie.title}
+                    className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-105 rounded-xl cursor-pointer"
+                  />
+                </Link>
 
-      {/* Overlay content */}
-      <div className="absolute inset-0 flex flex-col justify-end p-8 bg-gradient-to-t from-black/80 via-black/60 to-transparent">
-  {/* Individual Studio Logo */}
-  {/* <img
-    src={movie.studio_logo}
-    alt={`${movie.title} Studio Logo`}
-    className="max-h-11 lg:h-11 mt-20"
-  /> */}
+                {/* Overlay Info */}
+                <div className="absolute inset-0 flex flex-col justify-end p-8 
+                  bg-gradient-to-t from-black/40 via-black/20 to-transparent 
+                  transition-all duration-500">
+                  
+                  {/* Studio Logo */}
+                  {movie.logo && (
+                    <div className="mb-4 p-[2px] bg-gradient-to-r from-red-500 via-yellow-400 to-blue-500 rounded-full inline-block animate-pulse">
+                      <img
+                        src={movie.logo}
+                        alt={`${movie.title} Logo`}
+                        className="h-10 w-auto rounded-full bg-black p-1"
+                      />
+                    </div>
+                  )}
 
-  <h1 className="text-3xl font-bold text-white mb-2 drop-shadow-md">
-    {movie.title}
-  </h1>
+                  <h1 className="text-4xl font-extrabold text-white mb-2 drop-shadow-lg tracking-wide">
+                    {movie.title}
+                  </h1>
+                  <div className="flex flex-col gap-1 text-sm text-gray-300 font-medium">
+                    <p>🎬 {movie.genres || "Action | Adventure"}</p>
+                    <p>📅 {movie.year || 2022} ⏱ {movie.time || "2h 10m"}</p>
+                  </div>
+                  <p className="mt-2 text-gray-200 text-sm max-w-xl line-clamp-3">
+                    {movie.overview}
+                  </p>
+                  <Link
+                    to={`/Movies`}
+                    className="mt-5 px-6 py-2 bg-white text-black text-sm font-bold rounded-full 
+                      hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 
+                      hover:text-white transition-all shadow-md hover:shadow-2xl hover:-translate-y-1"
+                  >
+                    Explore →
+                  </Link>
+                </div>
 
-  <p className="text-sm text-gray-300 mb-1">🎬 {movie.genres || "Action | Adventure"}</p>
-  <p className="text-sm text-gray-300">
-    📅 {movie.year || 2022} ⏱ {movie.time || "2h 10m"}
-  </p>
-  <p className='max-w-md text-gray-300 font-medium'>
-        {movie.overview}
-      </p>
-  <Link
-    to={`/Movies`}
-    className="mt-4 self-start px-5 py-2 bg-white text-black text-sm rounded-full font-medium hover:bg-gray-200 transition"
-  >
-    Explore →
-  </Link>
-</div>
+                {/* Animated Bottom Line */}
+                <div className="absolute bottom-0 left-0 w-full h-1 
+                  bg-gradient-to-r from-pink-500 via-yellow-400 to-blue-500 
+                  animate-[pulse_4s_ease-in-out_infinite] shadow-inner shadow-white/20" />
+              </div>
+            </div>
+          ))}
+        </div>
 
-    </div>
-  </div>
-))}
-</div>
-
-        {/* Left Arrow */}
+        {/* Arrows */}
         <button
           onClick={() =>
             currentIndex > 0 && setCurrentIndex((prev) => prev - 1)
           }
-          className="absolute z-10 left-0 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white text-3xl px-4 py-2 rounded-full"
+          className="absolute z-10 left-0 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:scale-110 transition"
         >
-          <ArrowLeft className="w-8 h-8" />
+          <ArrowLeft className="w-6 h-6" />
         </button>
-
-        {/* Right Arrow */}
         <button
           onClick={() =>
             currentIndex < movies.length - 1 &&
             setCurrentIndex((prev) => prev + 1)
           }
-          className="absolute z-10 right-0 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white text-3xl px-4 py-2 rounded-full"
+          className="absolute z-10 right-0 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:scale-110 transition"
         >
-          <ArrowRight className="w-8 h-8" />
+          <ArrowRight className="w-6 h-6" />
         </button>
-       {/* Dots Indicator */}
-<div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2">
-  {movies.map((_, index) => (
-    <div
-      key={index}
-      className={`w-3 h-3 rounded-full ${
-        index === currentIndex ? "bg-white" : "bg-gray-500"
-      } transition duration-300`}
-    />
-  ))}
-</div>
 
+        {/* Dots */}
+        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4">
+          {movies.map((_, index) => (
+            <div
+              key={index}
+              className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${
+                index === currentIndex
+                  ? "bg-white animate-pulse scale-110 shadow-lg"
+                  : "bg-gray-400 opacity-40"
+              }`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
