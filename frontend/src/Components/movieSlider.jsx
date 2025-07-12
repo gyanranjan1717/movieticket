@@ -38,10 +38,11 @@ export default function MovieSlider() {
 
   return (
     <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
-      <BlurCircle top="0" right="-80px" />
-      <BlurCircle bottom="0" left="-80px" />
+      
 
       <div className="relative w-[90vw] overflow-visible">
+         <BlurCircle top="0" left="0" />
+      {/* <BlurCircle bottom="0" left="-80px" /> */}
         <div
           className="flex transition-transform duration-700 ease-in-out"
           style={{
@@ -93,7 +94,7 @@ export default function MovieSlider() {
                   </p>
                   <Link
                     to={`/Movies`}
-                    className="mt-5 px-6 py-2 bg-white text-black text-sm font-bold rounded-full 
+                    className="mt-5 px-6 py-2 bg-gray-500 text-white text-sm font-bold rounded-full 
                       hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 
                       hover:text-white transition-all shadow-md hover:shadow-2xl hover:-translate-y-1"
                   >
