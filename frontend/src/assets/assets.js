@@ -331,3 +331,71 @@ export const dummyBookingData = [
         "isPaid": true,
     },
 ]
+
+export const movies = [
+  {
+    _id: 1,
+    title: "Avengers: Endgame",
+    year: 2019,
+    time: "3h 1m",
+    genres: "Action | Adventure | Sci-Fi",
+    overview:
+      "After the devastating events of Avengers: Infinity War, the universe is in ruins. The Avengers assemble once more in order to undo Thanos's actions.",
+    backdrop_path:
+      "https://image.tmdb.org/t/p/original/or06FN3Dka5tukK1e9sl16pB3iy.jpg",
+    studio_logo:
+      "https://upload.wikimedia.org/wikipedia/commons/0/0c/MarvelLogo.svg",
+  },
+  {
+    _id: 2,
+    title: "Avatar",
+    year: 2009,
+    time: "2h 42m",
+    genres: "Action | Adventure | Fantasy",
+    overview:
+      "A paraplegic Marine is dispatched to the moon Pandora on a unique mission, where he becomes torn between following orders and protecting an alien civilization.",
+    backdrop_path:
+      "https://tse1.mm.bing.net/th/id/OIP.Fi-3M4OmV11QTvQAUV6tXgHaEo?rs=1&pid=ImgDetMain&o=7&rm=3",
+    studio_logo:
+      "https://upload.wikimedia.org/wikipedia/commons/4/48/20th_Century_Fox_logo.svg",
+  },
+  {
+    _id: 3,
+    title: "Titanic",
+    year: 1997,
+    time: "3h 15m",
+    genres: "Drama | Romance",
+    overview:
+      "A seventeen-year-old aristocrat falls in love with a kind but poor artist aboard the luxurious, ill-fated R.M.S. Titanic.",
+    backdrop_path:
+      "https://image.tmdb.org/t/p/original/9xjZS2rlVxm8SFx8kPC3aIGCOYQ.jpg",
+    studio_logo:
+      "https://upload.wikimedia.org/wikipedia/commons/4/48/20th_Century_Fox_logo.svg",
+  },
+  {
+    _id: 4,
+    title: "Star Wars: The Force Awakens",
+    year: 2015,
+    time: "2h 18m",
+    genres: "Action | Adventure | Fantasy",
+    overview:
+      "Three decades after the Empire's defeat, a new threat arises. The First Order attempts to rule the galaxy and only a ragtag group can stop them.",
+    backdrop_path:
+      "https://image.tmdb.org/t/p/original/wqnLdwVXoBjKibFRR5U3y0aDUhs.jpg",
+    studio_logo:
+      "https://upload.wikimedia.org/wikipedia/commons/d/de/Lucasfilm_Logo.svg",
+  },
+  {
+    _id: 5,
+    title: "Avengers: Infinity War",
+    year: 2018,
+    time: "2h 29m",
+    genres: "Action | Adventure | Sci-Fi",
+    overview:
+      "The Avengers and their allies must be willing to sacrifice all in an attempt to defeat the powerful Thanos before his blitz of devastation puts an end to the universe.",
+    backdrop_path:
+      "https://image.tmdb.org/t/p/original/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg",
+    studio_logo:
+      "https://upload.wikimedia.org/wikipedia/commons/0/0c/MarvelLogo.svg",
+  },
+];

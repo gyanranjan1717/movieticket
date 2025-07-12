@@ -90,11 +90,6 @@ export const createBooking = async (req, res) => {
           }catch(error){
             console.log("Error in sending Inngest event:", error.message);
           }
-
-
-
-
-
     return res.status(201).json({
       success: true,
       message: "Booking created & seats reserved",

@@ -10,7 +10,7 @@ const showRouter = express.Router()
 
 
 showRouter.get("/now-playing",
-    protectAdmin ,
+    // protectAdmin ,
     getNowPlayingMovies)
 showRouter.post("/add",
     protectAdmin,
