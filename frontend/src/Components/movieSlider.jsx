@@ -92,14 +92,16 @@ export default function MovieSlider() {
                   <p className="mt-2 text-gray-200 text-sm max-w-xl line-clamp-3">
                     {movie.overview}
                   </p>
-                  <Link
-                    to={`/Movies`}
-                    className="mt-5 px-6 py-2 bg-gray-500 text-white text-sm font-bold rounded-full 
-                      hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 
-                      hover:text-white transition-all shadow-md hover:shadow-2xl hover:-translate-y-1"
-                  >
-                    Explore →
-                  </Link>
+                <Link
+                  to={`/Movies`}
+                  className="mt-5 px-4 py-1 bg-gray-500 text-white text-sm font-bold rounded-full 
+                    hover:bg-gradient-to-r  shadow-md hover:shadow-2xl hover:-translate-y-1
+                    z-50 min-md:px-4 min-md:rounded-full backdrop-blur md:bg-white/10 md:border
+                    broder-gray-300/20 overflow-hidden transition-[width] duration-300
+                    w-fit inline-block"
+                >
+                  Explore →
+                </Link>
                 </div>
 
                 {/* Animated Bottom Line */}
