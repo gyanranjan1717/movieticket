@@ -17,9 +17,14 @@ const NavBar = () => {
     justify-between px-6 md:px-16 lg:px-36 py-5'>
       
      <Link to='/' className='max-md:flex-1'>
-     <img src={assets.logo} alt="" 
+     <img 
+    //  src={assets.logo}
+    src='https://fonts.freepik.com/api/render?variantId=12358&fontSize=48&text=Show%20Time'
+      alt="" 
      className='w-36 h-auto'
-     /></Link>
+     />
+      
+     </Link>
 
      <div className={`max-md:absolute max-md:top-0 max-md:left-0 max-md:font-medium
      max-md:text-lg z-50 flex flex-col md:flex-row items-center
