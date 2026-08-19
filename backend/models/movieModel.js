@@ -35,6 +35,11 @@ const movieSchema = new mongoose.Schema({
   },
   vote_average: {
     type: Number,
+    default: 0,
+  },
+  vote_count: {
+    type: Number,
+    default: 0,
   },
   runtime: {
     type: Number,
