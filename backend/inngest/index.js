@@ -135,6 +135,9 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
 //     }
 //  )
 
+import MovieReminder from "../models/MovieReminder.js";
+
+// Inngest function to send rich HTML ticket confirmation email after booking
 const sendBookingConfirmationEmail = inngest.createFunction(
   { id: "send-booking-confirmation-email" },
   { event: "app/show.booked" },
@@ -151,167 +154,194 @@ const sendBookingConfirmationEmail = inngest.createFunction(
       })
       .populate("user");
 
+    if (!booking || !booking.user || !booking.show) return;
+
     // Format Date & Time using luxon
-    const showDateTime = DateTime.fromISO(booking.show.showDateTime, {
+    const showDateTime = DateTime.fromISO(new Date(booking.show.showDateTime).toISOString(), {
       zone: "Asia/Kolkata",
     });
 
     const formattedDate = showDateTime.toLocaleString(DateTime.DATE_MED);
     const formattedTime = showDateTime.toLocaleString(DateTime.TIME_SIMPLE);
+    const seatsText = (booking.bookedSeats || []).join(", ") || "General Admission";
+    const posterUrl = booking.show.movie?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
 
-    // Send email
-    await sendEmail({
-      to: booking.user.email,
-      subject: `Booking Confirmation for ${booking.show.movie.title}`,
-      body: `
-        <div style="font-family: Arial,sans-serif; line-height: 1.6;">
-          <h2>Hi ${booking.user.name},</h2>
-          <p>Your booking for <strong style="color:#F84565;">${booking.show.movie.title}</strong> is confirmed.</p>
+    // Send rich HTML ticket email
+    await sendEmail(
+      booking.user.email,
+      `🎟️ Your Movie Ticket: ${booking.show.movie.title}`,
+      `
+        <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 30px; border-radius: 16px; max-w: 600px; margin: 0 auto; border: 1px solid #1f2937;">
+          <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #1f2937;">
+            <h1 style="color: #e11d48; margin: 0; font-size: 28px;">ShowTime Cinema</h1>
+            <p style="color: #9ca3af; font-size: 13px; margin-top: 5px;">Official Mobile E-Ticket</p>
+          </div>
 
-          <p>
-            <strong>Date:</strong> ${formattedDate}<br>
-            <strong>Time:</strong> ${formattedTime}<br>
-          </p>
+          <div style="margin-top: 25px; display: flex; gap: 20px;">
+            <img src="${posterUrl}" alt="${booking.show.movie.title}" style="width: 120px; height: 170px; object-fit: cover; border-radius: 12px; border: 1px solid #374151;" />
+            <div style="flex: 1;">
+              <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 22px;">${booking.show.movie.title}</h2>
+              <p style="margin: 4px 0; color: #d1d5db; font-size: 14px;"><strong>📅 Date:</strong> ${formattedDate}</p>
+              <p style="margin: 4px 0; color: #d1d5db; font-size: 14px;"><strong>⏰ Time:</strong> ${formattedTime}</p>
+              <p style="margin: 4px 0; color: #10b981; font-size: 14px;"><strong>🎟️ Reserved Seats:</strong> <span style="background-color: #064e3b; color: #34d399; padding: 3px 8px; border-radius: 6px; font-weight: bold;">${seatsText}</span></p>
+              <p style="margin: 4px 0; color: #d1d5db; font-size: 14px;"><strong>💰 Paid:</strong> $${booking.amount || 0}</p>
+            </div>
+          </div>
 
-          <p>Enjoy the show!</p>
-          <p>Thanks for booking with us!<br>- ShowTime Team</p>
+          <div style="margin-top: 25px; padding: 15px; background-color: #111827; border-radius: 12px; text-align: center; border: 1px dashed #374151;">
+            <p style="margin: 0; color: #9ca3af; font-size: 12px;">BOOKING ID</p>
+            <p style="margin: 5px 0 0 0; color: #f59e0b; font-family: monospace; font-size: 18px; font-weight: bold; letter-spacing: 2px;">#${booking._id.toString().toUpperCase()}</p>
+            <p style="margin: 10px 0 0 0; color: #6b7280; font-size: 11px;">Show this email or booking ID at theater entrance gate.</p>
+          </div>
+
+          <div style="margin-top: 25px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #1f2937; padding-top: 15px;">
+            <p>Enjoy your movie experience at <strong>ShowTime Cinema</strong>!</p>
+          </div>
         </div>
-      `,
-    });
+      `
+    );
   }
 );
 
-// inngest function to send reminder
-const sendShowReminders = inngest.createFunction(
-    {id:"send-show-reminders"},
-    { cron: "0 */8 * * *" }, // Every 8 hours
-    async ({step}) =>{
+// Inngest Scheduled Job: 1 Hour Before Movie Starting Reminder
+const send1HourShowReminders = inngest.createFunction(
+  { id: "send-1hour-show-reminders" },
+  { cron: "*/15 * * * *" }, // Runs every 15 minutes to check upcoming shows
+  async ({ step }) => {
+    const reminderTasks = await step.run(
+      "prepare-1hour-reminder-tasks",
+      async () => {
         const now = new Date();
-        const in8Hours = new Date(now.getTime() + 8*60*60*1000); // 8 hours later
-        const windowStart = new Date(in8Hours.getTime() - 10*60*1000); // 1 hour window before the show
-        
-        // prepare reminder tasks 
-        const reminderTasks = await step.run(
-            "prepare-reminder-tasks",
-            async () => {
-                const shows = await Show.find({
-                    showDateTime: {
-                        $gte: windowStart,
-                        $lte: in8Hours
-                    }
-                }).populate('movie');
+        // Window: 45 minutes to 75 minutes from now (~1 hour before show starts)
+        const windowStart = new Date(now.getTime() + 45 * 60 * 1000);
+        const windowEnd = new Date(now.getTime() + 75 * 60 * 1000);
 
-                const tasks = []
+        const shows = await Show.find({
+          showDateTime: { $gte: windowStart, $lte: windowEnd },
+        }).populate("movie");
 
-                for(const show of shows){
-                    if(!show.movie || !show.occupiedSeats) continue;
-                    const userIds = [...new set(Object.values(show.occupiedSeats))];
-                    
-                    if(userIds.length === 0) continue;
+        const tasks = [];
 
-                    const users = await User.find({
-                        _id:{$in:userIds}
-                    }).select("name email");
+        for (const show of shows) {
+          if (!show.movie) continue;
 
-                    for(const user of users){
-                        tasks.push({
-                            userEmail: user.email,
-                            userName: user.name,
-                            movieTitle: show.movie.title,
-                            showTime:show.showTime
-                        });
-                    }
-                    
-                }
+          // Find paid bookings for this show
+          const bookings = await Booking.find({ show: show._id, isPaid: true }).populate("user");
 
-                return tasks;
-            }
-        )
-        
-        if(reminderTasks.length === 0) {
-            console.log("No reminders to send");
-            return {sent:0,message:"No reminders to send"};
+          for (const b of bookings) {
+            if (!b.user || !b.user.email) continue;
+            tasks.push({
+              userEmail: b.user.email,
+              userName: b.user.name || "Movie Lover",
+              movieTitle: show.movie.title,
+              poster: show.movie.poster,
+              showTime: show.showDateTime,
+              seats: (b.bookedSeats || []).join(", ") || "General",
+            });
+          }
         }
+        return tasks;
+      }
+    );
 
-        const results = await step.run('send-all-reminders', async () => {
-            
-            return await promise.allsettled(
-                reminderTasks.map(task => sendEmail({
-                    to:task.userEmail,
-                    subject:`Reminder:your movie "${task.movieTitle}" is coming up soon!`,
-                    body:`
-                    <div style="font-family: Arial,sans-serif;padding: 20px;">
-            <h2> Hi ${task.userName},</h2>
-            <p>This is a quick reminder that your movie:<>
-            <strong style="color:#F84565;">"${task.movieTitle}"</strong> is coming up soon!</p>
-            <p> is scheduled for <strong>${new Date(task.showTime).toLocaleDateString('en-US',{timeZone:'Asia/Kolkata '})}</strong> at <strong>${new Date(task.showTime).toLocaleTimeString('en-US',{timeZone:'Asia/Kolkata '})}</strong>.</p>
-            <p>It starts in approximately <strong>8 hours </strong>.</p>
-            <br>
-            <p>Enjoy the show! <br> ShowTime Team</p>
-            </div
-                    `
-                })))
-
-
-        })
-
-        const sent = results.filter((r) => r.status === 'fulfilled').length;
-        const failed = results.length - sent;
-        return {
-            sent,
-            failed,
-            message: `Sent ${sent} reminders, ${failed} failed`
-        }
-
-
-    
+    if (reminderTasks.length === 0) {
+      return { sent: 0, message: "No 1-hour reminders to send right now" };
     }
-)
 
+    const results = await step.run("send-1hour-reminders-emails", async () => {
+      return await Promise.allSettled(
+        reminderTasks.map((task) => {
+          const formattedTime = new Date(task.showTime).toLocaleTimeString("en-US", {
+            timeZone: "Asia/Kolkata",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
 
-//send new show notification to all users
+          return sendEmail(
+            task.userEmail,
+            `⏳ 1 Hour Reminder: Your movie "${task.movieTitle}" starts soon!`,
+            `
+              <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 25px; border-radius: 16px; max-w: 550px; margin: 0 auto; border: 1px solid #1f2937;">
+                <h2 style="color: #f59e0b; margin-top: 0;">⏳ Your Movie Starts in 1 Hour!</h2>
+                <p>Hi <strong>${task.userName}</strong>,</p>
+                <p>This is your 1-hour starting reminder for <strong style="color: #e11d48;">"${task.movieTitle}"</strong>.</p>
+                
+                <div style="background-color: #111827; padding: 15px; border-radius: 12px; margin: 15px 0; border: 1px solid #374151;">
+                  <p style="margin: 4px 0; color: #d1d5db;"><strong>⏰ Show Starts:</strong> ${formattedTime}</p>
+                  <p style="margin: 4px 0; color: #10b981;"><strong>🎟️ Your Seats:</strong> ${task.seats}</p>
+                  <p style="margin: 4px 0; color: #9ca3af;"><strong>📍 Venue:</strong> ShowTime Cinema Screen 1</p>
+                </div>
+
+                <p style="color: #d1d5db;">Please arrive 15 minutes early to grab popcorn and get seated!</p>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">See you inside the theater! 🍿<br>- ShowTime Team</p>
+              </div>
+            `
+          );
+        })
+      );
+    });
+
+    const sent = results.filter((r) => r.status === "fulfilled").length;
+    return { sent, message: `Sent ${sent} 1-hour reminders` };
+  }
+);
+
+// Inngest Function: Send Notification when Showtimes are added for a movie ("Remind Me" Subscribers)
 const sendNewShowNotification = inngest.createFunction(
-    {id:"send-new-show-notifications"},
-    {event:"app/show.added"},
-    async({event}) =>{
-        const {movieTitle} = event.data;
-        const users = await User.find({});
+  { id: "send-new-show-notifications" },
+  { event: "app/show.added" },
+  async ({ event, step }) => {
+    const { movieTitle, movieId } = event.data;
 
-        for(const user of users){
-            const userEmail = user.email;
-            const userName = user.name;
-            
-            const subject = `New Show Alert: ${movieTitle}`;
-            const body = `
-            <div style="font-family: Arial,sans-serif; padding: 20px;">
-            <h2> Hi ${userName},</h2>
-            <p> we have just added a new show to our library:</p>
-            <h3 style="color:#F84565;">"${movieTitle}"</h3>
-            <p>Check it out now and book your tickets!</p>
-            <br>
-            <p>Thanks for being a part of our community!<br> ShowTime Team</p>
-            </div>
-            `;
-            await sendEmail({
-            to:userEmail,
-            subject,
-            body
-        })
+    // 1. Fetch targeted users who clicked "Remind Me" for this movie
+    const reminders = await step.run("fetch-movie-reminders", async () => {
+      return await MovieReminder.find({
+        $or: [{ movieId: movieId }, { movieTitle: new RegExp(movieTitle, "i") }],
+      });
+    });
 
-        }
-        return {message: `Notification sent to ${users.length} users`};
-       
+    if (reminders.length === 0) {
+      return { message: "No subscribers to notify for this movie" };
     }
-)
 
+    const results = await step.run("send-remind-me-emails", async () => {
+      return await Promise.allSettled(
+        reminders.map((sub) =>
+          sendEmail(
+            sub.userEmail,
+            `🎟️ Tickets OPEN: ${movieTitle} is now available for booking!`,
+            `
+              <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 25px; border-radius: 16px; max-w: 550px; margin: 0 auto; border: 1px solid #1f2937;">
+                <h2 style="color: #10b981; margin-top: 0;">🎉 Great News! Tickets are OPEN!</h2>
+                <p>Hi <strong>${sub.userName}</strong>,</p>
+                <p>You asked us to remind you when showtimes were added for <strong style="color: #e11d48;">"${movieTitle}"</strong>.</p>
+                
+                <div style="background-color: #111827; padding: 15px; border-radius: 12px; margin: 15px 0; text-align: center; border: 1px solid #374151;">
+                  <h3 style="color: #ffffff; margin: 0 0 10px 0;">"${movieTitle}" Screenings Available Now</h3>
+                  <p style="color: #9ca3af; font-size: 13px; margin: 0 0 15px 0;">Reserve your preferred seats before they fill up!</p>
+                  <a href="http://localhost:5173/Movies" style="background-color: #e11d48; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 10px; font-weight: bold; display: inline-block;">Book Tickets Now</a>
+                </div>
 
-// Create an empty array where we'll export future Inngest functions
+                <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Thanks for using ShowTime Cinema Reminders! 🍿</p>
+              </div>
+            `
+          )
+        )
+      );
+    });
+
+    const sent = results.filter((r) => r.status === "fulfilled").length;
+    return { sent, message: `Sent ${sent} "Remind Me" notifications for ${movieTitle}` };
+  }
+);
+
+// Export all Inngest functions
 export const functions = [
-    syncUserCreation,
-    syncUserDeletion,
-    syncUserUpdation,
-    releaseSeatsAndDeleteBooking,
-    sendBookingConfirmationEmail,
-    sendShowReminders,
-    sendNewShowNotification
+  syncUserCreation,
+  syncUserDeletion,
+  syncUserUpdation,
+  releaseSeatsAndDeleteBooking,
+  sendBookingConfirmationEmail,
+  send1HourShowReminders,
+  sendNewShowNotification,
 ];

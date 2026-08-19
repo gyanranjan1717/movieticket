@@ -1,73 +1,136 @@
-import { clerkClient } from "@clerk/express"
-import Booking from "../models/bookingModel.js"
-import Movie from "../models/movieModel.js"
+import User from "../models/User.js";
+import Booking from "../models/bookingModel.js";
+import Movie from "../models/movieModel.js";
+import MovieReminder from "../models/MovieReminder.js";
+import { safeRedisDel } from "../configs/redis.js";
 
-//  API  controller function to get user bookings
-
+// API controller function to get logged-in user's bookings
 export const getUserBookings = async (req, res) => {
     try {
-        const user = req.auth().userId
-        const bookings = await Booking.find({ user }).populate({
+        const userId = req.user.userId;
+        const bookings = await Booking.find({ user: userId }).populate({
             path: "show",
             populate: { path: "movie" }
-        }).sort({ createdAt: -1 })
+        }).sort({ createdAt: -1 });
 
-        return res.status(200).json({ success: true, bookings })
+        return res.status(200).json({ success: true, bookings });
     } catch (error) {
-        console.log(error)
-        return res.status(500).json({ success: false, message: "Erro ao carregar reservas" })
+        console.error("Error fetching user bookings:", error);
+        return res.status(500).json({ success: false, message: "Error loading bookings" });
     }
-}
+};
 
-
-//API controller function to add favorite move in clerk user metadata
-
+// API controller function to toggle favorite movie in MongoDB user schema
 export const updateFavorite = async (req, res) => {
   try {
     const { movieId } = req.body;
-    const userId = req.auth().userId;
+    const userId = req.user.userId;
 
-    const user = await clerkClient.users.getUser(userId);
-
-    // Safely get favorites
-    let favorites = user.privateMetadata.favorites || [];
-
-    // Toggle favorite
-    if (!favorites.includes(movieId)) {
-      favorites.push(movieId);
-    } else {
-      favorites = favorites.filter((item) => item !== movieId);
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // ✅ CORRECT WAY: wrap the favorites in an object
-    await clerkClient.users.updateUserMetadata(userId, {
-      privateMetadata: { favorites },
-    });
+    let favorites = user.favorites || [];
+    const movieObjId = movieId.toString();
+
+    // Toggle favorite
+    const exists = favorites.some((fav) => fav.toString() === movieObjId);
+    if (!exists) {
+      favorites.push(movieId);
+    } else {
+      favorites = favorites.filter((fav) => fav.toString() !== movieObjId);
+    }
+
+    user.favorites = favorites;
+    await user.save();
+
+    // Invalidate user recommendations cache
+    await safeRedisDel(`cache:recommendations:${userId}`);
 
     return res.status(200).json({
       success: true,
       message: "Favorites updated successfully",
-      favorites,
+      favorites: user.favorites,
     });
   } catch (error) {
-    console.log("❌ Error in updateFavorite:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Error updating favorites" });
+    console.error("Error in updateFavorite:", error);
+    return res.status(500).json({ success: false, message: "Error updating favorites" });
   }
 };
 
+// API controller function to get user favorites movies
 export const getFavorites = async (req, res) => {
     try {
-        const user = await clerkClient.users.getUser(req.auth().userId)
-        const favorites = user.privateMetadata.favorites || []
+        const user = await User.findById(req.user.userId).populate("favorites");
+        if (!user) {
+          return res.status(404).json({ success: false, message: "User not found" });
+        }
 
-// getting movies from the database based on the favorites array
-        const movies = await Movie.find({ _id: { $in: favorites } })
-
-        return res.status(200).json({ success: true, movies })
+        return res.status(200).json({ success: true, movies: user.favorites || [] });
     } catch (error) {
-        console.log(error.message)
-        return res.status(500).json({ success: false, message: "Erro ao buscar favoritos" })
+        console.error("Error fetching favorites:", error.message);
+        return res.status(500).json({ success: false, message: "Error fetching favorites" });
     }
-}
+};
+
+/**
+ * TOGGLE MOVIE REMINDER (When user asks to be notified when showtimes are added)
+ */
+export const toggleMovieReminder = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { movieId, movieTitle } = req.body;
+
+    if (!movieId || !movieTitle) {
+      return res.status(400).json({ success: false, message: "Movie ID and Title are required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const existing = await MovieReminder.findOne({ user: userId, movieId: movieId.toString() });
+
+    if (existing) {
+      await MovieReminder.findByIdAndDelete(existing._id);
+      return res.status(200).json({
+        success: true,
+        subscribed: false,
+        message: `Removed reminder for "${movieTitle}"`,
+      });
+    }
+
+    await MovieReminder.create({
+      user: userId,
+      userEmail: user.email,
+      userName: user.name || "Movie Lover",
+      movieTitle: movieTitle.trim(),
+      movieId: movieId.toString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      subscribed: true,
+      message: `Reminder set! We will email you at ${user.email} as soon as tickets open for "${movieTitle}".`,
+    });
+  } catch (error) {
+    console.error("Error toggling reminder:", error);
+    return res.status(500).json({ success: false, message: "Failed to set movie reminder" });
+  }
+};
+
+/**
+ * GET ALL MOVIE REMINDERS FOR CURRENT USER
+ */
+export const getUserReminders = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const reminders = await MovieReminder.find({ user: userId });
+    return res.status(200).json({ success: true, reminders });
+  } catch (error) {
+    console.error("Error fetching user reminders:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch reminders" });
+  }
+};
