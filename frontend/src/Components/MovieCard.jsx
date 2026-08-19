@@ -33,9 +33,16 @@ const MovieCard = ({ movie }) => {
         className='rounded-lg h-52 w-full object-cover object-center cursor-pointer'
       />
 
-      <p className='font-semibold mt-2 truncate'>
-        {movie.title || "Untitled"}
-      </p>
+      <div className="flex items-center justify-between mt-2">
+        <p className='font-semibold truncate text-white'>
+          {movie.title || "Untitled"}
+        </p>
+        {movie?.matchPercentage && (
+          <span className="text-emerald-400 font-bold text-xs bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded ml-2 flex-shrink-0">
+            {movie.matchPercentage}
+          </span>
+        )}
+      </div>
 
       <p className='text-sm text-gray-400 mt-2'>
         {releaseYear} · {genreText} · {movie.runtime ? timeformate(movie.runtime) : "N/A"}
