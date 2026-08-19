@@ -13,20 +13,27 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@clerk/express": "^1.7.2",
     "axios": "^1.10.0",
     "cloudinary": "^2.7.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
     "full-icu": "^1.5.0",
+    "google-auth-library": "^11.0.2",
+    "helmet": "^8.3.0",
     "https-proxy-agent": "^7.0.6",
     "inngest": "^3.39.2",
+    "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
     "luxon": "^3.6.1",
     "mongoose": "^8.16.1",
     "nodemailer": "^7.0.4",
+    "socket.io": "^4.8.3",
     "stripe": "^18.3.0",
-    "svix": "^1.68.0"
+    "svix": "^1.68.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
