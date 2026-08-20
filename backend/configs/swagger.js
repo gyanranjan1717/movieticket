@@ -18,7 +18,15 @@ const options = {
     servers: [
       {
         url: serverUrl,
-        description: "Application Backend Server",
+        description: "Configured Server (Active)",
+      },
+      {
+        url: "https://itsshowtime-backend.onrender.com",
+        description: "Production Render Server",
+      },
+      {
+        url: "http://localhost:3001",
+        description: "Local Development Server (Default Port)",
       },
     ],
     components: {
