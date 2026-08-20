@@ -11,56 +11,59 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false,
 });
 
-const TRAILER_MAP = {
-  "guardians of the galaxy": "https://www.youtube.com/watch?v=d96cjJhvlMA",
-  "dune: part two": "https://www.youtube.com/watch?v=Way9Dexny3w",
-  "dune": "https://www.youtube.com/watch?v=Way9Dexny3w",
-  "oppenheimer": "https://www.youtube.com/watch?v=uYPbbksJxIg",
-  "inception": "https://www.youtube.com/watch?v=YoHD9XEInc0",
-  "avatar: the way of water": "https://www.youtube.com/watch?v=d9MyW72ELq0",
-  "deadpool & wolverine": "https://www.youtube.com/watch?v=73_1biulk6s",
-  "spider-man: across the spider-verse": "https://www.youtube.com/watch?v=cqGjhVJWtEg",
-  "interstellar": "https://www.youtube.com/watch?v=zSWdZVtXT7E",
-  "the dark knight": "https://www.youtube.com/watch?v=EXeTwQWrcwY",
-  "gladiator ii": "https://www.youtube.com/watch?v=4rgYUipGJNo",
-  "joker: folie à deux": "https://www.youtube.com/watch?v=_OKAwz22TYM",
-  "alien: romulus": "https://www.youtube.com/watch?v=x0XDEhP4MQs",
-  "inside out 2": "https://www.youtube.com/watch?v=LEjhY15eCx0",
-};
-
-const getTrailerForTitle = (title) => {
-  if (!title) return "https://www.youtube.com/watch?v=YoHD9XEInc0";
-  const key = title.toLowerCase().trim();
-  for (const [name, url] of Object.entries(TRAILER_MAP)) {
-    if (key.includes(name)) return url;
+const fetchTrailerFromTmdb = async (movieId) => {
+  try {
+    const { data } = await axios.get(`${TMDB_BASE_URL}/movie/${movieId}/videos`, {
+      params: { api_key: TMDB_API_KEY },
+      httpsAgent,
+      timeout: 3000,
+    });
+    if (data.results && data.results.length > 0) {
+      const trailer = data.results.find(
+        (v) => v.site === "YouTube" && v.type === "Trailer"
+      );
+      const teaser = data.results.find(
+        (v) => v.site === "YouTube" && v.type === "Teaser"
+      );
+      const chosen = trailer || teaser || data.results[0];
+      if (chosen && chosen.key) {
+        return `https://www.youtube.com/watch?v=${chosen.key}`;
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch trailer for movie ID ${movieId}:`, err.message);
   }
-  return `https://www.youtube.com/watch?v=YoHD9XEInc0`;
+  return "https://www.youtube.com/watch?v=YoHD9XEInc0"; // default fallback
 };
 
 // Helper to format TMDB results with CDN proxy image paths
-const formatTmdbMovies = (movies) => {
-  return movies.map((m) => {
-    const poster = m.poster_path
-      ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w500${m.poster_path}`)}&output=webp`
-      : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
+const formatTmdbMovies = async (movies) => {
+  return Promise.all(
+    movies.map(async (m) => {
+      const poster = m.poster_path
+        ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w500${m.poster_path}`)}&output=webp`
+        : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
 
-    const backdrop = m.backdrop_path
-      ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w1280${m.backdrop_path}`)}&output=webp`
-      : poster;
+      const backdrop = m.backdrop_path
+        ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w1280${m.backdrop_path}`)}&output=webp`
+        : poster;
 
-    return {
-      id: m.id,
-      title: m.title || m.original_title,
-      overview: m.overview,
-      release_date: m.release_date || "2026-09-30",
-      vote_average: Number((m.vote_average || 8.0).toFixed(1)),
-      vote_count: m.vote_count || 0,
-      poster_path: poster,
-      backdrop_path: backdrop,
-      trailerUrl: getTrailerForTitle(m.title || m.original_title),
-      popularity: m.popularity,
-    };
-  });
+      const trailerUrl = await fetchTrailerFromTmdb(m.id);
+
+      return {
+        id: m.id,
+        title: m.title || m.original_title,
+        overview: m.overview,
+        release_date: m.release_date || "2026-09-30",
+        vote_average: Number((m.vote_average || 8.0).toFixed(1)),
+        vote_count: m.vote_count || 0,
+        poster_path: poster,
+        backdrop_path: backdrop,
+        trailerUrl: trailerUrl,
+        popularity: m.popularity,
+      };
+    })
+  );
 };
 
 /**
@@ -82,7 +85,7 @@ export const getUpcomingReleases = async (req, res) => {
       });
 
       if (data.results && data.results.length > 0) {
-        const formatted = formatTmdbMovies(data.results);
+        const formatted = await formatTmdbMovies(data.results);
         await safeRedisSet(cacheKey, JSON.stringify(formatted), "EX", 43200); // 12h
         return res.status(200).json({ success: true, movies: formatted, cached: false });
       }
@@ -132,7 +135,7 @@ export const getNowPlaying = async (req, res) => {
       });
 
       if (data.results && data.results.length > 0) {
-        const formatted = formatTmdbMovies(data.results);
+        const formatted = await formatTmdbMovies(data.results);
         await safeRedisSet(cacheKey, JSON.stringify(formatted), "EX", 43200);
         return res.status(200).json({ success: true, movies: formatted, cached: false });
       }
@@ -185,7 +188,7 @@ export const getTopRated = async (req, res) => {
       });
 
       if (data.results && data.results.length > 0) {
-        const formatted = formatTmdbMovies(data.results);
+        const formatted = await formatTmdbMovies(data.results);
         await safeRedisSet(cacheKey, JSON.stringify(formatted), "EX", 43200);
         return res.status(200).json({ success: true, movies: formatted, cached: false });
       }
