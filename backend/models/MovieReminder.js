@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const movieReminderSchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    user: { type: String, ref: "User", required: true },
     userEmail: { type: String, required: true },
     userName: { type: String, required: true },
     movieTitle: { type: String, required: true },

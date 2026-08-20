@@ -47,7 +47,27 @@ app.use('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhooks
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json());
 app.use(cors({
-  origin: [clientUrl, "http://localhost:5173", "http://localhost:3000", "*"],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      clientUrl,
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://itsshowtimecom.vercel.app"
+    ];
+
+    if (
+      allowedOrigins.includes(origin) || 
+      origin.endsWith(".vercel.app") || 
+      origin.includes("localhost")
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
 }));
 
