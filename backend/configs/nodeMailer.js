@@ -7,11 +7,19 @@ const createTransporter = () => {
 
   if (isGmail) {
     return nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true, // use SSL
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS?.replace(/\s+/g, ""), // strip any whitespace in app password
       },
+      connectionTimeout: 8000, // 8s timeout to avoid server hang
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
+      tls: {
+        rejectUnauthorized: false
+      }
     });
   }
 
@@ -23,6 +31,9 @@ const createTransporter = () => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
   });
 };
 
