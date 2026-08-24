@@ -100,7 +100,7 @@ const Releases = () => {
   const currentList = activeTab === "upcoming" ? upcomingMovies : nowPlayingMovies;
 
   return (
-    <div className="min-h-screen px-6 md:px-16 lg:px-36 pt-28 md:pt-36 pb-20 text-white relative">
+    <div className="min-h-screen px-6 md:px-16 lg:px-36 pt-28 md:pt-36 pb-20 text-white relative overflow-x-clip max-w-full">
       <BlurCircle top="50px" left="-100px" />
       <BlurCircle top="400px" right="-100px" />
 

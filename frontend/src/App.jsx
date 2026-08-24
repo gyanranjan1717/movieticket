@@ -19,6 +19,7 @@ import ListShow from './Pages/Admin/ListShow';
 import ListBooking from './Pages/Admin/ListBooking';
 import AISettings from './Pages/Admin/AISettings';
 import ChatBotWidget from './Components/ChatBot/ChatBotWidget';
+import RadialNavMenu from './Components/RadialNavMenu';
 import { useAppContext } from './context/AppContext';
 import Loading from './Components/Loading';
 
@@ -96,6 +97,7 @@ const App = () => {
 
       {!isAdminRoute && <Footer />}
       <ChatBotWidget />
+      {!isAdminRoute && <RadialNavMenu />}
     </>
   );
 };
