@@ -70,9 +70,12 @@ export const sendMessage = async (req, res) => {
       fullSystemPrompt += `\n\nAdditional Admin Instructions:\n${dbConfig.systemPromptOverride}`;
     }
 
+    // Performance Optimization: Slice to recent 6 conversation turns to prevent token bloat & high latency
+    const recentMessages = messages.slice(-6);
+
     // Generate response with tool calling
     const aiResponse = await provider.generateResponse({
-      messages,
+      messages: recentMessages,
       systemPrompt: fullSystemPrompt,
       tools: TOOL_DEFINITIONS,
       executeTool: executeToolCall,

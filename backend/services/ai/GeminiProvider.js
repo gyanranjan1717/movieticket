@@ -95,7 +95,8 @@ export class GeminiProvider extends BaseLLMProvider {
       model: this.model,
       systemInstruction: systemPrompt ? { role: 'system', parts: [{ text: systemPrompt }] } : undefined,
       generationConfig: {
-        temperature: this.temperature
+        temperature: this.temperature,
+        maxOutputTokens: 800
       },
       tools: geminiTools
     });

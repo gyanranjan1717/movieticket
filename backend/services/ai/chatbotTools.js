@@ -320,7 +320,7 @@ export const fetchLiveTheaters = async (city = "Bengaluru", query = "") => {
       headers: {
         'User-Agent': 'ShowTimeCinemaApp/2.0 (support@showtime.com)'
       },
-      timeout: 4000
+      timeout: 1500
     });
 
     let liveTheaters = [];
