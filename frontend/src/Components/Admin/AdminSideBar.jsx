@@ -1,6 +1,6 @@
 import React from 'react'
 import { assets } from '../../assets/assets'
-import { LayoutDashboardIcon, ListCollapseIcon, ListIcon, PlusSquareIcon } from 'lucide-react'
+import { LayoutDashboardIcon, ListCollapseIcon, ListIcon, PlusSquareIcon, Bot } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 const AdminSideBar = () => {
@@ -15,6 +15,7 @@ const adminNavlinks = [
     {name:'Add Shows',path:'/admin/AddShow',icon:PlusSquareIcon},
     {name:'List Shows',path:'/admin/ListShow',icon:ListIcon},
     {name:'List Bookings',path:'/admin/ListBooking',icon:ListCollapseIcon},
+    {name:'AI Assistant',path:'/admin/ai-settings',icon:Bot},
 ]    
   return (
     <div className='h-[calc(100vh-64px)] md:flex flex-col items-center

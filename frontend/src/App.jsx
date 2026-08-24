@@ -15,6 +15,8 @@ import Dashboard from './Pages/Admin/Dashboard';
 import AddShow from './Pages/Admin/AddShow';
 import ListShow from './Pages/Admin/ListShow';
 import ListBooking from './Pages/Admin/ListBooking';
+import AISettings from './Pages/Admin/AISettings';
+import ChatBotWidget from './Components/ChatBot/ChatBotWidget';
 import { useAppContext } from './context/AppContext';
 import Loading from './Components/Loading';
 
@@ -70,10 +72,12 @@ const App = () => {
           <Route path="addshow" element={<AddShow />} />
           <Route path="listshow" element={<ListShow />} />
           <Route path="listbooking" element={<ListBooking />} />
+          <Route path="ai-settings" element={<AISettings />} />
         </Route>
       </Routes>
 
       {!isAdminRoute && <Footer />}
+      <ChatBotWidget />
     </>
   );
 };
