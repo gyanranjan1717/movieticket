@@ -1,5 +1,15 @@
 import express from "express";
-import { sendOtp, verifyOtp, googleAuth, getMe, sendAdminOtp, verifyAdminOtp } from "../controllers/authController.js";
+import {
+  sendOtp,
+  verifyOtp,
+  googleAuth,
+  getMe,
+  sendAdminOtp,
+  verifyAdminOtp,
+  registerWithPassword,
+  loginWithPassword,
+  loginAdminDirect
+} from "../controllers/authController.js";
 import { protectUser } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import {
@@ -11,6 +21,11 @@ import {
 } from "../schemas/validationSchemas.js";
 
 const authRouter = express.Router();
+
+// Direct Password & Admin Login Endpoints
+authRouter.post("/register-password", registerWithPassword);
+authRouter.post("/login-password", loginWithPassword);
+authRouter.post("/admin-login", loginAdminDirect);
 
 /**
  * @openapi

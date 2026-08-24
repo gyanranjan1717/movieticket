@@ -4,6 +4,7 @@ const userSchema = new mongoose.Schema({
     _id: { type: String }, // Can be custom ID or default ObjectId string
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
+    password: { type: String, default: null }, // Hashed password for direct login
     image: { type: String, default: "" },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Movie' }],

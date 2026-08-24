@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import User from "../models/User.js";
 import Otp from "../models/Otp.js";
 import sendEmail from "../configs/nodeMailer.js";
@@ -9,6 +10,20 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || "movieticket_super_secret_jwt_key_2026";
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// Password Hashing Helper (Native Node.js PBKDF2)
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  return `${salt}:${hash}`;
+};
+
+const verifyPassword = (password, storedHash) => {
+  if (!storedHash || !storedHash.includes(":")) return false;
+  const [salt, originalHash] = storedHash.split(":");
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  return hash === originalHash;
+};
+
 // Generate JWT token helper
 const generateToken = (user) => {
   return jwt.sign(
@@ -16,6 +31,153 @@ const generateToken = (user) => {
     JWT_SECRET,
     { expiresIn: "7d" }
   );
+};
+
+// Direct User Registration with Password
+export const registerWithPassword = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ success: false, message: "Valid email address is required" });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+    }
+
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ success: false, message: "An account with this email already exists. Please log in." });
+    }
+
+    const defaultName = name || email.split("@")[0];
+    const hashedPassword = hashPassword(password);
+
+    user = await User.create({
+      _id: "usr_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+      name: defaultName,
+      email,
+      password: hashedPassword,
+      image: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(defaultName)}`,
+      role: "user",
+      favorites: [],
+    });
+
+    const token = generateToken(user);
+    return res.status(201).json({
+      success: true,
+      message: "Account created successfully! Welcome to ShowTime.",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        role: user.role,
+        favorites: user.favorites,
+      },
+    });
+  } catch (error) {
+    console.error("Error in registerWithPassword:", error);
+    return res.status(500).json({ success: false, message: "Registration failed", error: error.message });
+  }
+};
+
+// Direct User Login with Password
+export const loginWithPassword = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: "Email and password are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "No account found with this email. Please sign up." });
+    }
+
+    if (!user.password) {
+      // First time setting password for OTP/Google user
+      user.password = hashPassword(password);
+      await user.save();
+    } else {
+      const isMatch = verifyPassword(password, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ success: false, message: "Incorrect password. Please try again." });
+      }
+    }
+
+    const token = generateToken(user);
+    return res.status(200).json({
+      success: true,
+      message: "Welcome back!",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        role: user.role,
+        favorites: user.favorites,
+      },
+    });
+  } catch (error) {
+    console.error("Error in loginWithPassword:", error);
+    return res.status(500).json({ success: false, message: "Login failed", error: error.message });
+  }
+};
+
+// Direct Admin Login with Secret Key
+export const loginAdminDirect = async (req, res) => {
+  try {
+    const { email, adminKey, name, password } = req.body;
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ success: false, message: "Valid admin email is required" });
+    }
+
+    const expectedAdminKey = process.env.ADMIN_SECRET_KEY || "ShowTimeApp";
+    if (!adminKey || adminKey.trim() !== expectedAdminKey.trim()) {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid Master Admin Secret Key. Access denied.",
+      });
+    }
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      const defaultName = name || email.split("@")[0];
+      user = await User.create({
+        _id: "adm_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+        name: defaultName,
+        email,
+        password: password ? hashPassword(password) : null,
+        image: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(defaultName)}`,
+        role: "admin",
+        favorites: [],
+      });
+    } else {
+      user.role = "admin";
+      if (password && !user.password) user.password = hashPassword(password);
+      await user.save();
+    }
+
+    const token = generateToken(user);
+    return res.status(200).json({
+      success: true,
+      message: "Admin authentication successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        role: user.role,
+        favorites: user.favorites,
+      },
+    });
+  } catch (error) {
+    console.error("Error in loginAdminDirect:", error);
+    return res.status(500).json({ success: false, message: "Admin authentication failed", error: error.message });
+  }
 };
 
 // 1. Send OTP to User Email
