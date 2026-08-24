@@ -28,6 +28,7 @@ import userRouter from './routes/userRoutes.js';
 import recommendationRouter from './routes/recommendationRoutes.js';
 import reviewRouter from './routes/reviewRoutes.js';
 import tmdbRouter from './routes/tmdbRoutes.js';
+import chatbotRouter from './routes/chatbotRoutes.js';
 import { stripeWebhooks } from './controllers/stripeWebhooks.js';
 
 const app = express();
@@ -96,6 +97,7 @@ app.use("/api/user", userRouter);
 app.use("/api/recommendations", recommendationRouter);
 app.use("/api/reviews", reviewRouter);
 app.use("/api/tmdb", tmdbRouter);
+app.use("/api/chatbot", chatbotRouter);
 
 // Global Error Handler Middleware
 app.use((err, req, res, next) => {
