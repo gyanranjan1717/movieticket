@@ -3,7 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { assets } from '../assets/assets';
 import Loading from '../Components/Loading';
 import SeatHoldTimer from '../Components/SeatHoldTimer';
-import { ArrowRightIcon, Clock10Icon, Sparkles } from 'lucide-react';
+import {
+  ArrowRightIcon,
+  Clock10Icon,
+  Sparkles,
+  Calendar,
+  Film,
+  Tag,
+  ArrowLeft,
+  ChevronRight,
+  ShieldCheck
+} from 'lucide-react';
 import isoTimeFormate from '../Lib/isoTimeFormate';
 import BlurCircle from '../Components/BlurCircle';
 import toast from 'react-hot-toast';
@@ -19,7 +29,7 @@ const SeatLayout = () => {
   const [selectedTime, setSelectedTime] = useState(null);
   const [show, setShow] = useState(null);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
-  const [liveSelectingSeats, setLiveSelectingSeats] = useState([]); // Seats currently being clicked by other users in real time
+  const [liveSelectingSeats, setLiveSelectingSeats] = useState([]);
   const [isBooking, setIsBooking] = useState(false);
 
   const { axios, user, token, setIsAuthModalOpen } = useAppContext();
@@ -69,10 +79,11 @@ const SeatLayout = () => {
   };
 
   const getOccupiedSeats = async () => {
+    if (!selectedTime?.showId) return;
     try {
       const { data } = await axios.get(`/api/booking/seats/${selectedTime.showId}`);
       if (data.success) {
-        setOccupiedSeats(data.occupiedSeats);
+        setOccupiedSeats(data.occupiedSeats || []);
       } else {
         toast.error("Failed to fetch occupied seats");
       }
@@ -184,8 +195,34 @@ const SeatLayout = () => {
 
   const availableTimings = getAvailableTimings();
 
+  // Extract all available screening dates
+  const getAvailableDatesList = () => {
+    if (!show?.dateTime || Object.keys(show.dateTime).length === 0) {
+      // Generate next 7 dates from today
+      const dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        dates.push(d.toISOString().split('T')[0]);
+      }
+      return dates;
+    }
+
+    const uniqueDates = Object.keys(show.dateTime).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+    return uniqueDates.length > 0 ? uniqueDates.sort() : Object.keys(show.dateTime);
+  };
+
+  const availableDates = getAvailableDatesList();
+
+  const handleDateChange = (newDate) => {
+    if (newDate === date) return;
+    setSelectedSeats([]);
+    setSelectedTime(null);
+    navigate(`/movies/${id}/${newDate}`);
+  };
+
   useEffect(() => {
-    if (availableTimings.length > 0 && !selectedTime) {
+    if (availableTimings.length > 0) {
       setSelectedTime(availableTimings[0]);
     }
   }, [show, date]);
@@ -211,8 +248,8 @@ const SeatLayout = () => {
           const isLiveSelecting = liveSelectingSeats.includes(seatId);
 
           let seatStyle = "bg-gray-900 border-gray-700 text-gray-300 hover:border-primary/60";
-          if (isSelected) seatStyle = "bg-primary text-white border-primary shadow-lg shadow-primary/40";
-          else if (isOccupied) seatStyle = "bg-gray-800 text-gray-600 border-gray-800 cursor-not-allowed opacity-50";
+          if (isSelected) seatStyle = "bg-primary text-white border-primary shadow-lg shadow-primary/40 scale-105";
+          else if (isOccupied) seatStyle = "bg-gray-800 text-gray-600 border-gray-800 cursor-not-allowed opacity-40";
           else if (isLiveSelecting) seatStyle = "bg-amber-500/30 text-amber-300 border-amber-500 animate-pulse";
 
           return (
@@ -230,106 +267,253 @@ const SeatLayout = () => {
     </div>
   );
 
-  return show ? (
-    <div className="flex flex-col md:flex-row px-6 md:px-16 lg:px-36 py-28 md:pt-40 gap-10">
-      {/* Timing Sidebar */}
-      <div className="w-full md:w-64 bg-gray-900/60 border border-gray-800 rounded-3xl p-6 h-max md:sticky md:top-32 shadow-xl">
-        <p className="text-lg font-bold text-white mb-4">Select Showtime</p>
-        <div className="space-y-2">
-          {availableTimings.length > 0 ? (
-            availableTimings.map((item, index) => (
-              <div
-                key={`${item.time}-${index}`}
-                onClick={() => {
-                  setSelectedTime(item);
-                  setSelectedSeats([]);
-                }}
-                className={`flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer transition border ${
-                  selectedTime?.time === item.time || selectedTime?.showId === item.showId
-                    ? "bg-primary text-white border-primary shadow-lg shadow-primary/30"
-                    : "bg-gray-800/40 border-gray-800 hover:border-gray-700 text-gray-300"
-                }`}
-              >
-                <Clock10Icon className="w-4 h-4" />
-                <p className="text-sm font-semibold">{isoTimeFormate(item.time)}</p>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-gray-500">No timings available</p>
-          )}
-        </div>
+  const movie = show?.movie;
+  const formattedSelectedDate = date
+    ? new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Selected Date';
 
-        {/* Pricing Tier Legend */}
-        <div className="mt-8 pt-6 border-t border-gray-800 space-y-2 text-xs text-gray-400">
-          <p className="font-semibold text-gray-300 mb-2">Seat Tiers</p>
-          <div className="flex items-center justify-between">
-            <span>Standard (A-D)</span>
-            <span className="font-semibold text-white">${selectedTime?.showPrice || 12}</span>
+  return show ? (
+    <div className="min-h-screen pb-24 pt-24 md:pt-32 px-4 md:px-12 lg:px-24">
+      
+      {/* 🎬 Top Banner: Selected Movie & Details Header */}
+      <div className="max-w-6xl mx-auto mb-8 bg-gray-900/90 border border-gray-800 rounded-3xl p-5 md:p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        <BlurCircle top="-40px" right="-40px" />
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          
+          {/* Movie Thumbnail & Info */}
+          <div className="flex items-center gap-4">
+            <img
+              src={movie?.poster || 'https://via.placeholder.com/150x220?text=Movie'}
+              alt={movie?.title || 'Movie'}
+              className="w-16 h-24 md:w-20 md:h-28 object-cover rounded-2xl shadow-lg border border-gray-800 shrink-0"
+            />
+            <div>
+              <button
+                onClick={() => navigate(`/movies/${id}`)}
+                className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 mb-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Back to Movie Overview
+              </button>
+              
+              <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">
+                {movie?.title || 'Cinema Screening'}
+              </h1>
+              
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-400">
+                {movie?.runtime && (
+                  <span className="px-2 py-0.5 rounded-md bg-gray-800 text-gray-300 font-mono">
+                    {movie.runtime}m
+                  </span>
+                )}
+                {movie?.genres && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                    {Array.isArray(movie.genres) ? movie.genres.slice(0, 2).join(' • ') : movie.genres}
+                  </span>
+                )}
+                {movie?.vote_average ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                    ★ {Number(movie.vote_average).toFixed(1)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span>Premium (E-H)</span>
-            <span className="font-semibold text-amber-400">${(selectedTime?.showPrice || 12) + 4}</span>
+
+          {/* Active Date & Time Badge */}
+          <div className="flex items-center gap-3 bg-gray-950/80 border border-gray-800/80 p-3.5 rounded-2xl shrink-0">
+            <div className="p-2.5 rounded-xl bg-primary/20 text-primary">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Booking For</p>
+              <p className="text-sm font-extrabold text-white">{formattedSelectedDate}</p>
+              {selectedTime && (
+                <p className="text-xs text-primary font-bold mt-0.5">
+                  Slot: {isoTimeFormate(selectedTime.time)}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1 text-rose-400">
-              <Sparkles className="w-3 h-3" /> VIP (I-J)
-            </span>
-            <span className="font-semibold text-rose-400">${(selectedTime?.showPrice || 12) + 8}</span>
-          </div>
+
         </div>
       </div>
 
-      {/* Main Seat Canvas */}
-      <div className="relative flex-1 flex flex-col items-center">
-        <BlurCircle top="-50px" left="-50px" />
-
-        {/* 10-Minute Hold Timer Header */}
-        <SeatHoldTimer active={selectedSeats.length > 0} onExpire={handleHoldExpire} />
-
-        <h1 className="text-2xl font-bold text-white mb-2">Choose Your Seats</h1>
-        <p className="text-xs text-gray-400 mb-8">Click seats to select (Max 5)</p>
-
-        {/* Realistic Curved Screen Graphic */}
-        <div className="w-full max-w-xl mb-10 flex flex-col items-center">
-          <div className="w-full h-3 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full shadow-[0_0_25px_rgba(248,69,101,0.8)]" />
-          <p className="text-[10px] tracking-[0.3em] font-mono text-gray-500 mt-2 uppercase">
-            CINEMA SCREEN THIS WAY
+      {/* 📅 Interactive Date Switcher Bar (Change Date in 1-Click) */}
+      <div className="max-w-6xl mx-auto mb-10 bg-gray-900/60 border border-gray-800 rounded-3xl p-4 md:p-5 shadow-xl">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <p className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+            <Calendar className="w-4 h-4 text-primary" />
+            Change Screening Date
           </p>
+          <span className="text-[11px] text-gray-500">Pick any date to load showtimes</span>
         </div>
 
-        {/* Seat Layout Grid */}
-        <div className="flex flex-col items-center text-xs text-gray-300 bg-gray-950/60 p-6 md:p-8 rounded-3xl border border-gray-800/80 shadow-2xl">
-          <div className="space-y-1 mb-6">
-            {groupRows[0].map((row) => renderSeats(row))}
+        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+          {availableDates.map((dateKey) => {
+            const isSelectedDate = dateKey === date;
+            const parsedDate = new Date(dateKey);
+            const weekday = parsedDate.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayNum = parsedDate.getDate();
+            const monthStr = parsedDate.toLocaleDateString('en-US', { month: 'short' });
+
+            return (
+              <button
+                key={dateKey}
+                type="button"
+                onClick={() => handleDateChange(dateKey)}
+                className={`flex flex-col items-center justify-center py-2.5 px-4 min-w-[72px] rounded-2xl transition cursor-pointer font-bold border shrink-0 ${
+                  isSelectedDate
+                    ? 'bg-primary text-white border-primary shadow-lg shadow-primary/30 scale-105'
+                    : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-white'
+                }`}
+              >
+                <span className="text-[10px] uppercase tracking-wider font-semibold opacity-80">
+                  {weekday}
+                </span>
+                <span className="text-lg font-black">{dayNum}</span>
+                <span className="text-[10px] uppercase tracking-wider opacity-80">
+                  {monthStr}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main Seat Canvas & Showtimes */}
+      <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-10">
+        
+        {/* Timing Sidebar */}
+        <div className="w-full md:w-64 bg-gray-900/60 border border-gray-800 rounded-3xl p-6 h-max md:sticky md:top-32 shadow-xl shrink-0">
+          <p className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Clock10Icon className="w-5 h-5 text-primary" />
+            Select Showtime
+          </p>
+          
+          <div className="space-y-2">
+            {availableTimings.length > 0 ? (
+              availableTimings.map((item, index) => {
+                const isSelectedSlot = selectedTime?.time === item.time || selectedTime?.showId === item.showId;
+                return (
+                  <div
+                    key={`${item.time}-${index}`}
+                    onClick={() => {
+                      setSelectedTime(item);
+                      setSelectedSeats([]);
+                    }}
+                    className={`flex items-center justify-between px-4 py-3 rounded-2xl cursor-pointer transition border ${
+                      isSelectedSlot
+                        ? "bg-primary text-white border-primary shadow-lg shadow-primary/30"
+                        : "bg-gray-800/40 border-gray-800 hover:border-gray-700 text-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Clock10Icon className="w-4 h-4" />
+                      <p className="text-sm font-semibold">{isoTimeFormate(item.time)}</p>
+                    </div>
+                    <span className="text-xs font-bold font-mono">₹{item.showPrice || 250}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="p-4 rounded-2xl bg-gray-950 border border-gray-800 text-center text-xs text-gray-400">
+                No shows scheduled for this date. Please pick another date above.
+              </div>
+            )}
           </div>
-          <div className="space-y-1 mb-6">
-            {groupRows.slice(1, 4).flatMap((g) => g).map((row) => renderSeats(row))}
-          </div>
-          <div className="space-y-1 pt-4 border-t border-rose-500/20">
-            {groupRows[4].map((row) => renderSeats(row))}
+
+          {/* Pricing Tier Legend */}
+          <div className="mt-8 pt-6 border-t border-gray-800 space-y-2 text-xs text-gray-400">
+            <p className="font-semibold text-gray-300 mb-2">Seat Tiers</p>
+            <div className="flex items-center justify-between">
+              <span>Standard (A-D)</span>
+              <span className="font-semibold text-white">₹{selectedTime?.showPrice || 250}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Premium (E-H)</span>
+              <span className="font-semibold text-amber-400">₹{(selectedTime?.showPrice || 250) + 50}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1 text-rose-400">
+                <Sparkles className="w-3 h-3" /> VIP Recliner (I-J)
+              </span>
+              <span className="font-semibold text-rose-400">₹{(selectedTime?.showPrice || 250) + 100}</span>
+            </div>
           </div>
         </div>
 
-        {/* Checkout Bar */}
-        <div className="mt-10 w-full max-w-md bg-gray-900 border border-gray-800 p-6 rounded-3xl flex items-center justify-between shadow-2xl">
-          <div>
-            <span className="text-xs text-gray-400 block">Total Amount</span>
-            <span className="text-2xl font-bold text-white">${getTotalPrice()}</span>
-            <span className="text-xs text-gray-500 ml-2">({selectedSeats.length} seats)</span>
+        {/* Main Seat Canvas */}
+        <div className="relative flex-1 flex flex-col items-center">
+          <BlurCircle top="-50px" left="-50px" />
+
+          {/* 10-Minute Hold Timer Header */}
+          <SeatHoldTimer active={selectedSeats.length > 0} onExpire={handleHoldExpire} />
+
+          <h2 className="text-2xl font-black text-white mb-1">Choose Your Seats</h2>
+          <p className="text-xs text-gray-400 mb-8">Click on seats to select (Max 5 per order)</p>
+
+          {/* Realistic Curved Screen Graphic */}
+          <div className="w-full max-w-xl mb-10 flex flex-col items-center">
+            <div className="w-full h-3 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full shadow-[0_0_25px_rgba(248,69,101,0.8)]" />
+            <p className="text-[10px] tracking-[0.3em] font-mono text-gray-500 mt-2 uppercase">
+              CINEMA SCREEN THIS WAY
+            </p>
           </div>
 
-          <button
-            onClick={bookTickets}
-            disabled={isBooking || selectedSeats.length === 0}
-            className={`flex items-center gap-2 px-8 py-3 text-sm rounded-full font-semibold transition cursor-pointer ${
-              isBooking || selectedSeats.length === 0
-                ? "bg-gray-800 text-gray-500 cursor-not-allowed"
-                : "bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30"
-            }`}
-          >
-            {isBooking ? "Reserving..." : "Proceed to Checkout"}
-            {!isBooking && <ArrowRightIcon className="w-4 h-4" />}
-          </button>
+          {/* Seat Layout Grid */}
+          <div className="flex flex-col items-center text-xs text-gray-300 bg-gray-950/60 p-6 md:p-8 rounded-3xl border border-gray-800/80 shadow-2xl overflow-x-auto max-w-full">
+            <div className="space-y-1 mb-6">
+              {groupRows[0].map((row) => renderSeats(row))}
+            </div>
+            <div className="space-y-1 mb-6">
+              {groupRows.slice(1, 4).flatMap((g) => g).map((row) => renderSeats(row))}
+            </div>
+            <div className="space-y-1 pt-4 border-t border-rose-500/20">
+              {groupRows[4].map((row) => renderSeats(row))}
+            </div>
+          </div>
+
+          {/* Seat Color Guide */}
+          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-gray-400 mt-6">
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded bg-gray-900 border border-gray-700 inline-block" />
+              <span>Available</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded bg-primary border border-primary inline-block" />
+              <span>Selected</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded bg-gray-800 opacity-40 border border-gray-800 inline-block" />
+              <span>Booked</span>
+            </div>
+          </div>
+
+          {/* Checkout Bar */}
+          <div className="mt-10 w-full max-w-lg bg-gray-900 border border-gray-800 p-6 rounded-3xl flex items-center justify-between shadow-2xl">
+            <div>
+              <span className="text-xs text-gray-400 block">Total Payable</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-white">₹{getTotalPrice()}</span>
+                <span className="text-xs text-gray-500 font-semibold">({selectedSeats.length} seats)</span>
+              </div>
+            </div>
+
+            <button
+              onClick={bookTickets}
+              disabled={isBooking || selectedSeats.length === 0}
+              className={`flex items-center gap-2 px-8 py-3.5 text-sm rounded-full font-bold transition cursor-pointer shadow-lg ${
+                isBooking || selectedSeats.length === 0
+                  ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                  : "bg-primary hover:bg-primary/90 text-white shadow-primary/30 active:scale-95"
+              }`}
+            >
+              {isBooking ? "Reserving..." : "Proceed to Checkout"}
+              {!isBooking && <ArrowRightIcon className="w-4 h-4" />}
+            </button>
+          </div>
+
         </div>
       </div>
     </div>
