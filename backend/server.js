@@ -2,6 +2,7 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import dns from 'node:dns';
 import dotenv from "dotenv";
 dotenv.config();
@@ -41,6 +42,9 @@ initSocket(server);
 
 await connectDB();
 
+// High-performance gzip/deflate response compression
+app.use(compression());
+
 // Stripe Webhooks (Raw Body parser before express.json)
 app.use('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhooks);
 
@@ -59,11 +63,12 @@ app.use(cors({
       "https://itsshowtimecom.vercel.app"
     ];
 
-    if (
-      allowedOrigins.includes(origin) || 
-      origin.endsWith(".vercel.app") || 
-      origin.includes("localhost")
-    ) {
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      /^https:\/\/[a-zA-Z0-9-]+\.vercel\.app$/.test(origin) ||
+      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
+    if (isAllowed) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
@@ -109,9 +114,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-server.listen(port, () => {
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(port, () => {
     const serverUrl = process.env.SERVER_URL || `http://localhost:${port}`;
     console.log(`Server listening at ${serverUrl}`);
     console.log(`Swagger Documentation available at ${serverUrl}/api-docs`);
     console.log(`WebSockets running on port ${port}`);
-});
+  });
+}
+
+export { app, server };
+export default app;

@@ -33,14 +33,14 @@ export const getRecommendedMovies = async (req, res) => {
       });
     }
 
-    // 1. Fetch user bookings
+    // 1. Fetch user bookings (lean)
     const userBookings = await Booking.find({ user: userId }).populate({
       path: "show",
       populate: { path: "movie" }
-    });
+    }).lean();
 
-    // 2. Fetch user MongoDB favorites
-    const user = await User.findById(userId).populate("favorites");
+    // 2. Fetch user MongoDB favorites (lean)
+    const user = await User.findById(userId).populate("favorites").lean();
     const favoriteMovies = user?.favorites || [];
 
     // Extract watched movies & favorited movies
@@ -49,9 +49,9 @@ export const getRecommendedMovies = async (req, res) => {
 
     // Fallback: If user has no interaction history, return top rated movies
     if (interactedMovies.length === 0) {
-      const topMovies = await Movie.find().sort({ vote_average: -1 }).limit(6);
+      const topMovies = await Movie.find().sort({ vote_average: -1 }).limit(6).lean();
       const formattedTop = topMovies.map((m, idx) => ({
-        ...m.toObject(),
+        ...m,
         matchScore: 90 - idx * 4,
         matchPercentage: `${90 - idx * 4}% match`
       }));
@@ -68,7 +68,7 @@ export const getRecommendedMovies = async (req, res) => {
     // 3. Build user preference profile (Genre scores & Cast scores)
     const genreScore = {};
     const castScore = {};
-    const interactedIds = new Set(interactedMovies.map((m) => m._id.toString()));
+    const interactedIds = new Set(interactedMovies.map((m) => (m._id || m.id).toString()));
 
     interactedMovies.forEach((movie) => {
       movie.genres?.forEach((genre) => {
@@ -82,8 +82,21 @@ export const getRecommendedMovies = async (req, res) => {
       });
     });
 
-    // 4. Candidate Retrieval & Scoring
-    const candidates = await Movie.find({ _id: { $nin: Array.from(interactedIds) } });
+    // 4. Candidate Retrieval: Filter by preferred genres instead of loading entire DB
+    const preferredGenres = Object.keys(genreScore);
+    const candidateFilter = { _id: { $nin: Array.from(interactedIds) } };
+    if (preferredGenres.length > 0) {
+      candidateFilter.genres = { $in: preferredGenres };
+    }
+
+    let candidates = await Movie.find(candidateFilter).limit(50).lean();
+    if (candidates.length < 6) {
+      // Fallback pool if genre-specific candidates are few
+      candidates = await Movie.find({ _id: { $nin: Array.from(interactedIds) } })
+        .sort({ vote_average: -1 })
+        .limit(30)
+        .lean();
+    }
 
     const scoredCandidates = candidates.map((movie) => {
       let rawScore = 0;
@@ -108,7 +121,7 @@ export const getRecommendedMovies = async (req, res) => {
       const matchScore = calculateMatchPercentage(rawScore, 15);
 
       return {
-        ...movie.toObject(),
+        ...movie,
         matchScore,
         matchPercentage: `${matchScore}% match`
       };
@@ -181,17 +194,26 @@ export const getSimilarMovies = async (req, res) => {
     let targetMovie = null;
 
     if (isMongoObjectId) {
-      targetMovie = await Movie.findById(movieId);
+      targetMovie = await Movie.findById(movieId).lean();
     }
 
     // Prepare target movie sets
     const targetGenres = new Set(targetMovie?.genres || ["Action", "Adventure", "Drama"]);
     const targetCastNames = new Set((targetMovie?.casts || []).map((c) => c.name).filter(Boolean));
 
-    // Fetch candidates from DB
-    const candidates = isMongoObjectId
-      ? await Movie.find({ _id: { $ne: movieId } })
-      : await Movie.find();
+    // Fetch targeted candidates by genre from DB with limit & lean
+    const filter = isMongoObjectId ? { _id: { $ne: movieId } } : {};
+    if (targetGenres.size > 0) {
+      filter.genres = { $in: Array.from(targetGenres) };
+    }
+
+    let candidates = await Movie.find(filter).limit(50).lean();
+    if (candidates.length < 4) {
+      candidates = await Movie.find(isMongoObjectId ? { _id: { $ne: movieId } } : {})
+        .sort({ vote_average: -1 })
+        .limit(20)
+        .lean();
+    }
 
     // Calculate overlap match scores
     const scoredCandidates = candidates.map((movie) => {
@@ -210,7 +232,7 @@ export const getSimilarMovies = async (req, res) => {
       const matchScore = calculateMatchPercentage(rawScore, 100);
 
       return {
-        ...movie.toObject(),
+        ...movie,
         matchScore,
         matchPercentage: `${matchScore}% match`
       };
@@ -222,9 +244,9 @@ export const getSimilarMovies = async (req, res) => {
 
     // Fallback if fewer than 4 candidates
     if (recommendations.length < 4) {
-      const topMovies = await Movie.find().sort({ vote_average: -1 }).limit(6);
+      const topMovies = await Movie.find().sort({ vote_average: -1 }).limit(6).lean();
       recommendations = topMovies.map((m, i) => ({
-        ...m.toObject(),
+        ...m,
         matchScore: 92 - i * 3,
         matchPercentage: `${92 - i * 3}% match`
       }));

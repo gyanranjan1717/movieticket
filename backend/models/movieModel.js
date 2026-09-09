@@ -55,6 +55,12 @@ const movieSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+// Indexes for searching, sorting top-rated movies, and filtering by genre
+movieSchema.index({ title: "text" });
+movieSchema.index({ vote_average: -1 });
+movieSchema.index({ genres: 1 });
+movieSchema.index({ releaseDate: -1 });
+
 const Movie = mongoose.model("Movie", movieSchema);
 
 export default Movie;

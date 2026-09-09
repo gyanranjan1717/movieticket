@@ -2,69 +2,84 @@ import stripe from 'stripe'
 import Booking from '../models/bookingModel.js'
 import { inngest } from '../inngest/index.js';
 
-export const stripeWebhooks = async (request, response) => {
+let stripeInstance = null;
+const getStripe = () => {
+  if (!stripeInstance) {
+    stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+  }
+  return stripeInstance;
+};
 
-    const stripeInstance = new  stripe(process.env.STRIPE_SECRET_KEY);
+export const stripeWebhooks = async (request, response) => {
+    const stripeClient = getStripe();
     const sig = request.headers['stripe-signature'];
     
     let event;
 
-    try{
-
-    event = stripeInstance.webhooks.constructEvent(
-        request.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET);
-
-    }catch(error){
-        console.log("Error in stripe webhook", error.message);
-        return response.status(400).send(
-           `WebHook Error: ${error.message}`
+    try {
+        event = stripeClient.webhooks.constructEvent(
+            request.body,
+            sig,
+            process.env.STRIPE_WEBHOOK_SECRET
         );
+    } catch(error) {
+        console.log("Error in stripe webhook constructEvent:", error.message);
+        return response.status(400).send(`WebHook Error: ${error.message}`);
     }
- // to check the event 
-    try{
 
-        switch(event.type){
-            case "payment_intent.succeeded":
-                // case "checkout.session.completed":
-                {
+    try {
+        switch(event.type) {
+            case "checkout.session.completed": {
+                const session = event.data.object;
+                const bookingId = session.metadata?.bookingId;
 
-                const paymentIntent = event.data.object;
-                const sessionList = await stripeInstance.checkout.sessions.list({
-                payment_intent: paymentIntent.id,
-                })
-                const session = sessionList.data[0];
-                // const session = event.data.object; // new line 
-                const {bookingId} = session.metadata;
-                
-                
-                // change the property in mongodb 
-                await Booking.findByIdAndUpdate(bookingId, {
-                    isPaid: true,
-                    paymentLink:""
-                })
-               
-
-                //send confirmation email
-                
-                try {
-                    await inngest.send({
-                        name: "app/show.booked",
-                        data: { bookingId }
+                if (bookingId) {
+                    await Booking.findByIdAndUpdate(bookingId, {
+                        isPaid: true,
+                        paymentLink: ""
                     });
-                    } catch (err) {
-                    console.error("Inngest send failed:", err);
-                    }
 
-                 break;
+                    try {
+                        await inngest.send({
+                            name: "app/show.booked",
+                            data: { bookingId }
+                        });
+                    } catch (err) {
+                        console.error("Inngest send failed:", err.message);
+                    }
+                }
+                break;
+            }
+
+            case "payment_intent.succeeded": {
+                const paymentIntent = event.data.object;
+                const sessionList = await stripeClient.checkout.sessions.list({
+                    payment_intent: paymentIntent.id,
+                });
+                const session = sessionList.data[0];
+                const bookingId = session?.metadata?.bookingId;
+
+                if (bookingId) {
+                    await Booking.findByIdAndUpdate(bookingId, {
+                        isPaid: true,
+                        paymentLink: ""
+                    });
+
+                    try {
+                        await inngest.send({
+                            name: "app/show.booked",
+                            data: { bookingId }
+                        });
+                    } catch (err) {
+                        console.error("Inngest send failed:", err.message);
+                    }
+                }
+                break;
+            }
+
+            default:
+                console.log(`Unhandled stripe event type: ${event.type}`);
         }
-       // if we get any other things in place of payment_intent.succeeded
-        default:
-            console.log(`Unhandled event type ${event.type}`);
-            
-            
-    }
 
         return response.status(200).json({
             received: true,

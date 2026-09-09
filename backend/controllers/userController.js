@@ -11,7 +11,7 @@ export const getUserBookings = async (req, res) => {
         const bookings = await Booking.find({ user: userId }).populate({
             path: "show",
             populate: { path: "movie" }
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).lean();
 
         return res.status(200).json({ success: true, bookings });
     } catch (error) {
@@ -20,30 +20,26 @@ export const getUserBookings = async (req, res) => {
     }
 };
 
-// API controller function to toggle favorite movie in MongoDB user schema
+// API controller function to toggle favorite movie in MongoDB user schema (Atomic)
 export const updateFavorite = async (req, res) => {
   try {
     const { movieId } = req.body;
     const userId = req.user.userId;
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select("favorites").lean();
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    let favorites = user.favorites || [];
     const movieObjId = movieId.toString();
+    const exists = (user.favorites || []).some((fav) => fav.toString() === movieObjId);
 
-    // Toggle favorite
-    const exists = favorites.some((fav) => fav.toString() === movieObjId);
-    if (!exists) {
-      favorites.push(movieId);
-    } else {
-      favorites = favorites.filter((fav) => fav.toString() !== movieObjId);
-    }
-
-    user.favorites = favorites;
-    await user.save();
+    // Atomic update in MongoDB
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      exists ? { $pull: { favorites: movieId } } : { $addToSet: { favorites: movieId } },
+      { new: true, select: "favorites" }
+    ).lean();
 
     // Invalidate user recommendations cache
     await safeRedisDel(`cache:recommendations:${userId}`);
@@ -51,7 +47,7 @@ export const updateFavorite = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Favorites updated successfully",
-      favorites: user.favorites,
+      favorites: updatedUser?.favorites || [],
     });
   } catch (error) {
     console.error("Error in updateFavorite:", error);
@@ -62,7 +58,7 @@ export const updateFavorite = async (req, res) => {
 // API controller function to get user favorites movies
 export const getFavorites = async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId).populate("favorites");
+        const user = await User.findById(req.user.userId).populate("favorites").lean();
         if (!user) {
           return res.status(404).json({ success: false, message: "User not found" });
         }
@@ -86,12 +82,12 @@ export const toggleMovieReminder = async (req, res) => {
       return res.status(400).json({ success: false, message: "Movie ID and Title are required" });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select("email name").lean();
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const existing = await MovieReminder.findOne({ user: userId, movieId: movieId.toString() });
+    const existing = await MovieReminder.findOne({ user: userId, movieId: movieId.toString() }).lean();
 
     if (existing) {
       await MovieReminder.findByIdAndDelete(existing._id);
@@ -127,7 +123,7 @@ export const toggleMovieReminder = async (req, res) => {
 export const getUserReminders = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const reminders = await MovieReminder.find({ user: userId });
+    const reminders = await MovieReminder.find({ user: userId }).lean();
     return res.status(200).json({ success: true, reminders });
   } catch (error) {
     console.error("Error fetching user reminders:", error);

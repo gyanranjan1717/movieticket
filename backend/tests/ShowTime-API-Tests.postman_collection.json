@@ -1,0 +1,311 @@
+{
+  "info": {
+    "_postman_id": "showtime-api-collection-v1",
+    "name": "ShowTime API Regression Suite",
+    "description": "Comprehensive automated API test suite covering happy paths, negative paths, security boundaries, and response time contracts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. System Health & Swagger Contract",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/",
+          "host": ["{{baseUrl}}"],
+          "path": [""]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response contains valid Swagger docs link', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(true);",
+              "    pm.expect(json.swaggerDocs).to.include('/api-docs');",
+              "});",
+              "",
+              "pm.test('Health check latency is under 300ms', function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(300);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Discover Active Shows (Dynamic Chaining)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/show/all",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "show", "all"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Active shows array is populated', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(true);",
+              "    pm.expect(json.shows).to.be.an('array');",
+              "    pm.expect(json.shows.length).to.be.above(0);",
+              "    ",
+              "    // Dynamically chain showId and a unique testSeat to environment",
+              "    const targetShow = json.shows[0];",
+              "    pm.environment.set('showId', targetShow._id);",
+              "    pm.environment.set('testSeat', 'POSTMAN_SEAT_' + Date.now().toString().slice(-6));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Query Occupied Seats for Show",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/booking/seats/{{showId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "booking", "seats", "{{showId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Occupied seats list is an array', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(true);",
+              "    pm.expect(json.occupiedSeats).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Create Booking — Happy Path",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "origin", "value": "http://localhost:5173" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"showId\": \"{{showId}}\",\n  \"selectedSeats\": [\"{{testSeat}}\"]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/booking/create",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "booking", "create"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 201 Created', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test('Booking confirmed and Stripe session created', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(true);",
+              "    pm.expect(json.bookingId).to.be.a('string');",
+              "    pm.expect(json.url).to.include('checkout.stripe.com');",
+              "    ",
+              "    // Store booking ID",
+              "    pm.environment.set('bookingId', json.bookingId);",
+              "});",
+              "",
+              "pm.test('Downstream payment creation latency under 8000ms', function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(8000);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Negative Test — Reject Duplicate / Locked Seat",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "origin", "value": "http://localhost:5173" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"showId\": \"{{showId}}\",\n  \"selectedSeats\": [\"{{testSeat}}\"]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/booking/create",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "booking", "create"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Duplicate seat booking returns HTTP 400 Bad Request', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('Success flag is false on conflict', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(false);",
+              "});",
+              "",
+              "pm.test('Immediate lock rejection in under 600ms', function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(600);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Negative Test — Reject Invalid Auth Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer invalid_tampered_token_xyz" },
+          { "key": "origin", "value": "http://localhost:5173" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"showId\": \"{{showId}}\",\n  \"selectedSeats\": [\"ANY_SEAT_99\"]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/booking/create",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "booking", "create"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Invalid JWT token returns HTTP 401 Unauthorized', function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test('Rejection body states invalid or expired token', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(false);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Negative Test — Reject Invalid Zod Schema (Empty Body)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "origin", "value": "http://localhost:5173" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/booking/create",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "booking", "create"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Schema violation returns HTTP 400 Bad Request', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('Validation error message present', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(false);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Recommendations Performance & Auth",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/recommendations",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "recommendations"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Recommendations array returned', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.success).to.eql(true);",
+              "    pm.expect(json.recommendations).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -2,17 +2,22 @@ import Review from "../models/reviewModel.js";
 import Movie from "../models/movieModel.js";
 import { safeRedisDel } from "../configs/redis.js";
 
-// Helper function to recalculate and update movie rating
+// Helper function to recalculate and update movie rating using MongoDB aggregation
 const recalculateMovieRating = async (movieId) => {
-  const reviews = await Review.find({ movie: movieId.toString() });
-  const totalReviews = reviews.length;
+  const movieStr = movieId.toString();
+  const [statsResult] = await Review.aggregate([
+    { $match: { movie: movieStr } },
+    {
+      $group: {
+        _id: null,
+        avgRating: { $avg: "$rating" },
+        totalReviews: { $sum: 1 },
+      },
+    },
+  ]);
 
-  if (totalReviews === 0) {
-    return { avgRating: 0, totalReviews: 0 };
-  }
-
-  const sum = reviews.reduce((acc, curr) => acc + curr.rating, 0);
-  const avgRating = Number((sum / totalReviews).toFixed(1));
+  const totalReviews = statsResult?.totalReviews || 0;
+  const avgRating = totalReviews > 0 ? Number(statsResult.avgRating.toFixed(1)) : 0;
 
   // Update Movie document in MongoDB if valid ObjectId
   const isMongoObjectId = typeof movieId === "string" && /^[0-9a-fA-F]{24}$/.test(movieId);
@@ -80,18 +85,31 @@ export const getMovieReviews = async (req, res) => {
   try {
     const { movieId } = req.params;
     const movieStr = movieId.toString();
-    const reviews = await Review.find({ movie: movieStr }).sort({ createdAt: -1 });
+    
+    // Parallel fetch: reviews list with lean + rating stats via aggregation
+    const [reviews, statsResult] = await Promise.all([
+      Review.find({ movie: movieStr }).sort({ createdAt: -1 }).lean(),
+      Review.aggregate([
+        { $match: { movie: movieStr } },
+        {
+          $group: {
+            _id: null,
+            avgRating: { $avg: "$rating" },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
 
-    const totalReviews = reviews.length;
+    const totalReviews = statsResult[0]?.totalReviews || 0;
     let avgRating = 8.5;
 
     if (totalReviews > 0) {
-      const sum = reviews.reduce((acc, curr) => acc + curr.rating, 0);
-      avgRating = Number((sum / totalReviews).toFixed(1));
+      avgRating = Number(statsResult[0].avgRating.toFixed(1));
     } else {
       const isMongoObjectId = typeof movieStr === "string" && /^[0-9a-fA-F]{24}$/.test(movieStr);
       if (isMongoObjectId) {
-        const movie = await Movie.findById(movieStr);
+        const movie = await Movie.findById(movieStr).select("vote_average").lean();
         avgRating = movie?.vote_average || 8.5;
       }
     }
@@ -108,13 +126,13 @@ export const getMovieReviews = async (req, res) => {
   }
 };
 
-// Toggle like on a review
+// Toggle like on a review (Atomic MongoDB update)
 export const likeReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
     const { userId } = req.user;
 
-    const review = await Review.findById(reviewId);
+    const review = await Review.findById(reviewId).select("likes").lean();
     if (!review) {
       return res.status(404).json({ success: false, message: "Review not found" });
     }
@@ -122,19 +140,20 @@ export const likeReview = async (req, res) => {
     const likes = review.likes || [];
     const alreadyLiked = likes.includes(userId);
 
-    if (alreadyLiked) {
-      review.likes = likes.filter((id) => id !== userId);
-    } else {
-      review.likes.push(userId);
-    }
+    // Atomic update to avoid race condition on concurrent likes
+    const updated = await Review.findByIdAndUpdate(
+      reviewId,
+      alreadyLiked ? { $pull: { likes: userId } } : { $addToSet: { likes: userId } },
+      { new: true, select: "likes" }
+    ).lean();
 
-    await review.save();
+    const updatedLikes = updated?.likes || [];
 
     return res.status(200).json({
       success: true,
       liked: !alreadyLiked,
-      totalLikes: review.likes.length,
-      likes: review.likes,
+      totalLikes: updatedLikes.length,
+      likes: updatedLikes,
     });
   } catch (error) {
     console.error("Error liking review:", error);
@@ -142,7 +161,7 @@ export const likeReview = async (req, res) => {
   }
 };
 
-// Add a reply inside a review comment
+// Add a reply inside a review comment (Atomic push)
 export const replyToReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
@@ -153,11 +172,6 @@ export const replyToReview = async (req, res) => {
       return res.status(400).json({ success: false, message: "Reply comment cannot be empty" });
     }
 
-    const review = await Review.findById(reviewId);
-    if (!review) {
-      return res.status(404).json({ success: false, message: "Review not found" });
-    }
-
     const newReply = {
       user: userId,
       userName: name || "Anonymous User",
@@ -166,14 +180,22 @@ export const replyToReview = async (req, res) => {
       createdAt: new Date(),
     };
 
-    review.replies.push(newReply);
-    await review.save();
+    // Atomic push into replies array
+    const updated = await Review.findByIdAndUpdate(
+      reviewId,
+      { $push: { replies: newReply } },
+      { new: true, select: "replies" }
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Review not found" });
+    }
 
     return res.status(201).json({
       success: true,
       message: "Reply posted successfully",
       reply: newReply,
-      replies: review.replies,
+      replies: updated.replies,
     });
   } catch (error) {
     console.error("Error replying to review:", error);

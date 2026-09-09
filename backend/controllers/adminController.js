@@ -10,16 +10,30 @@ export const isAdmin = async (req, res) => {
 
 export const getDashboardData = async (req, res) => {
     try {
-        const bookings = await Booking.find({ isPaid: true });
-        const activeShows = await Show.find({ showDateTime: { $gte: new Date() } }).populate("movie");
-        const totalUser = await User.countDocuments();
+        // Run aggregation, active shows, and total users in parallel
+        const [bookingStatsResult, activeShows, totalUser] = await Promise.all([
+            Booking.aggregate([
+                { $match: { isPaid: true } },
+                {
+                    $group: {
+                        _id: null,
+                        totalBookings: { $sum: 1 },
+                        totalRevenue: { $sum: "$amount" },
+                        avgTicketPrice: { $avg: "$amount" }
+                    }
+                }
+            ]),
+            Show.find({ showDateTime: { $gte: new Date() } }).populate("movie").lean(),
+            User.countDocuments()
+        ]);
 
-        // Calculate occupancy metrics
-        const totalRevenue = bookings.reduce((acc, booking) => acc + (booking.amount || 0), 0);
-        const avgTicketPrice = bookings.length > 0 ? (totalRevenue / bookings.length).toFixed(2) : 0;
+        const stats = bookingStatsResult[0] || { totalBookings: 0, totalRevenue: 0, avgTicketPrice: 0 };
+        const totalRevenue = stats.totalRevenue || 0;
+        const totalBookings = stats.totalBookings || 0;
+        const avgTicketPrice = Number((stats.avgTicketPrice || 0).toFixed(2));
 
         const dashboardData = {
-            totalBookings: bookings.length,
+            totalBookings,
             totalRevenue,
             avgTicketPrice,
             activeShows,
@@ -38,7 +52,7 @@ export const getDashboardData = async (req, res) => {
 // API to get all shows 
 export const getAllShows = async (req, res) => {
     try {
-        const shows = await Show.find().populate("movie").sort({ showDateTime: -1 });
+        const shows = await Show.find().populate("movie").sort({ showDateTime: -1 }).lean();
         return res.status(200).json({ success: true, shows });
     } catch (error) {
         console.error("Error fetching all shows:", error);
@@ -51,7 +65,7 @@ export const getAllBookings = async (req, res) => {
         const bookings = await Booking.find({}).populate('user').populate({
             path: "show",
             populate: { path: "movie" }
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).lean();
 
         return res.status(200).json({ success: true, bookings });
     } catch (error) {
@@ -68,7 +82,7 @@ export const exportBookingsCSV = async (req, res) => {
         const bookings = await Booking.find({}).populate('user').populate({
             path: "show",
             populate: { path: "movie" }
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).lean();
 
         // Build CSV content
         let csv = "Booking_ID,Customer_Name,Customer_Email,Movie_Title,Show_Date,Booked_Seats,Amount_USD,Payment_Status,Created_At\n";
@@ -101,8 +115,17 @@ export const exportBookingsCSV = async (req, res) => {
  */
 export const exportUsersCSV = async (req, res) => {
     try {
-        const users = await User.find().select("-password").sort({ createdAt: -1 });
-        const bookings = await Booking.find();
+        // Parallel queries: Fetch lean users and aggregated booking count per user
+        const [users, bookingCounts] = await Promise.all([
+            User.find().select("-password").sort({ createdAt: -1 }).lean(),
+            Booking.aggregate([
+                { $group: { _id: "$user", count: { $sum: 1 } } }
+            ])
+        ]);
+
+        const bookingCountMap = new Map(
+            bookingCounts.map((b) => [b._id?.toString(), b.count])
+        );
 
         let csv = "User_ID,Full_Name,Email,Role,Total_Bookings,Created_At\n";
 
@@ -111,7 +134,7 @@ export const exportUsersCSV = async (req, res) => {
             const name = `"${(u.name || "N/A").replace(/"/g, '""')}"`;
             const email = `"${(u.email || "N/A").replace(/"/g, '""')}"`;
             const role = u.role || "Customer";
-            const userBookingCount = bookings.filter((b) => b.user?.toString() === userId).length;
+            const userBookingCount = bookingCountMap.get(userId) || 0;
             const createdAt = u.createdAt ? new Date(u.createdAt).toISOString() : "N/A";
 
             csv += `${userId},${name},${email},${role},${userBookingCount},${createdAt}\n`;
@@ -150,7 +173,7 @@ export const flushRedisCache = async (req, res) => {
  */
 export const getAllUsers = async (req, res) => {
     try {
-        const users = await User.find().select("-password").sort({ createdAt: -1 });
+        const users = await User.find().select("-password").sort({ createdAt: -1 }).lean();
         return res.status(200).json({ success: true, users });
     } catch (error) {
         console.error("Error fetching users:", error);

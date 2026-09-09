@@ -5,7 +5,11 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --detectOpenHandles",
+    "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage --runInBand",
+    "test:concurrency": "node scripts/load-test-seat-lock.js",
+    "test:routes": "node scripts/benchmark-all-routes.js",
+    "test:api": "newman run tests/ShowTime-API-Tests.postman_collection.json -e tests/ShowTime-Local.postman_environment.json",
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
@@ -17,6 +21,7 @@
     "axios": "^1.10.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.7.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
@@ -39,6 +44,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "autocannon": "^8.0.0",
+    "cross-env": "^10.1.0",
+    "jest": "^30.5.1",
+    "newman": "^6.2.2",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.2.2"
   }
 }

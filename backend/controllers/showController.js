@@ -51,8 +51,8 @@ export const getNowPlayingMovies = async (req, res) => {
       console.warn("TMDB fetch for admin failed, falling back:", err.message);
     }
 
-    // 2. Combine with existing MongoDB movies
-    const dbMovies = await Movie.find().sort({ createdAt: -1 }).limit(20);
+    // 2. Combine with existing MongoDB movies (lean)
+    const dbMovies = await Movie.find().sort({ createdAt: -1 }).limit(20).lean();
     const formattedDb = dbMovies.map((m) => formatMovieItem(m));
 
     // Deduplicate by title
@@ -103,10 +103,10 @@ export const searchMovies = async (req, res) => {
       console.warn("TMDB search error:", err.message);
     }
 
-    // Search MongoDB database by regex
+    // Search MongoDB database by regex (lean)
     const dbMovies = await Movie.find({
       title: { $regex: query.trim(), $options: "i" },
-    }).limit(10);
+    }).limit(10).lean();
 
     const formattedDb = dbMovies.map((m) => formatMovieItem(m));
 
@@ -269,7 +269,8 @@ export const getShows = async (req, res) => {
 
     const shows = await Show.find({ showDateTime: { $gte: new Date() } })
       .populate("movie")
-      .sort({ showDateTime: 1 });
+      .sort({ showDateTime: 1 })
+      .lean();
 
     const uniqueMap = new Map();
     shows.forEach(show => {
@@ -301,14 +302,14 @@ export const getShow = async (req, res) => {
 
     let movie = null;
 
-    // 1. Try finding in MongoDB by ObjectId
+    // 1. Try finding in MongoDB by ObjectId (lean)
     if (mongoose.Types.ObjectId.isValid(movieId)) {
-      movie = await Movie.findById(movieId);
+      movie = await Movie.findById(movieId).lean();
     }
 
     // 2. Try finding by numeric watchmodeId (Safely avoid Mongoose ObjectId CastError)
     if (!movie && !isNaN(Number(movieId))) {
-      movie = await Movie.findOne({ watchmodeId: Number(movieId) });
+      movie = await Movie.findOne({ watchmodeId: Number(movieId) }).lean();
     }
 
     // 3. Fallback: Fetch movie details directly from TMDB if not in local DB
@@ -414,7 +415,7 @@ export const getShow = async (req, res) => {
       /^[0-9a-fA-F]{24}$/.test(movie._id.toString());
 
     const shows = isMongoObjectId
-      ? await Show.find({ movie: movie._id, showDateTime: { $gte: startOfToday } }).sort({ showDateTime: 1 })
+      ? await Show.find({ movie: movie._id, showDateTime: { $gte: startOfToday } }).sort({ showDateTime: 1 }).lean()
       : [];
 
     const dateTime = {};

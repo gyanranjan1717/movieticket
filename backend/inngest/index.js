@@ -7,6 +7,7 @@ import sendEmail from "../configs/nodeMailer.js";
 import dotenv from "dotenv";
 dotenv.config();
 import { DateTime } from "luxon";
+import { safeRedisDel } from "../configs/redis.js";
 // import pkg from 'react';
 // const { use } = pkg
 
@@ -73,22 +74,27 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
         const tenMinutesLater = new Date(Date.now() + 10 * 60 * 1000);
         await step.sleepUntil('wait-for-10-minutes', tenMinutesLater);
 
-        await step.run('check-payment-status',async () => {
+        await step.run('check-payment-status', async () => {
             const bookingId = event.data.bookingId;
             const booking = await Booking.findById(bookingId);
             
-            // IF PAyment is not made, release seats and delete booking
-            if (!booking.isPaid) {
-                const show = await Show.findById(booking.show);
-                booking.bookedSeats.forEach(seat => {
-                        delete show.occupiedSeats[seat];
+            // If booking doesn't exist or is already paid, nothing to release
+            if (!booking || booking.isPaid) {
+                return;
+            }
+
+            // Atomic release of occupied seats
+            if (booking.show && booking.bookedSeats?.length > 0) {
+                const seatUnsets = {};
+                booking.bookedSeats.forEach((seat) => {
+                    seatUnsets[`occupiedSeats.${seat}`] = 1;
                 });
-                show.markModified('occupiedSeats');
-                await show.save();
-                await Booking.findByIdAndDelete(booking._id);
-            }   
-        
-        })
+                await Show.findByIdAndUpdate(booking.show, { $unset: seatUnsets });
+                await safeRedisDel("cache:active_shows");
+            }
+
+            await Booking.findByIdAndDelete(booking._id);
+        });
     }
 
 );

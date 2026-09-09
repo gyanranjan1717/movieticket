@@ -4,17 +4,20 @@ import stripe from "stripe";
 import { inngest } from "../inngest/index.js";
 import redis, { safeRedisDel, safeRedisSet } from "../configs/redis.js";
 
-// Helper to get Stripe instance dynamically or lazily
+let stripeInstance = null;
 const getStripeInstance = () => {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error("STRIPE_SECRET_KEY is not defined in environment variables");
+  if (!stripeInstance) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY is not defined in environment variables");
+    }
+    stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
   }
-  return new stripe(process.env.STRIPE_SECRET_KEY);
+  return stripeInstance;
 };
 
 export const checkSeatsAvailiability = async (showId, selectedSeats) => {
   try {
-    const showData = await Show.findById(showId);
+    const showData = await Show.findById(showId).lean();
     if (!showData) return false;
 
     const occupiedSeats = showData.occupiedSeats || {};
@@ -38,9 +41,14 @@ export const acquireSeatLocks = async (showId, selectedSeats, userId) => {
         const acquired = await safeRedisSet(lockKey, userId, "PX", lockTTL, "NX");
         
         if (!acquired) {
-          // Rollback locks acquired so far
+          // Rollback locks acquired so far (safe release with userId)
           for (const key of lockedKeys) {
-            await safeRedisDel(key);
+            await redis.eval(
+              'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end',
+              1,
+              key,
+              userId
+            );
           }
           return false;
         }
@@ -54,11 +62,24 @@ export const acquireSeatLocks = async (showId, selectedSeats, userId) => {
   }
 };
 
-export const releaseSeatLocks = async (showId, selectedSeats) => {
+// Safe Redis lock release using Lua script to verify lock owner
+export const releaseSeatLocks = async (showId, selectedSeats, userId) => {
   try {
     if (redis.status === "ready") {
+      const releaseLua = `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("del", KEYS[1])
+        else
+          return 0
+        end
+      `;
       for (const seat of selectedSeats) {
-        await safeRedisDel(`lock:show:${showId}:seat:${seat}`);
+        const lockKey = `lock:show:${showId}:seat:${seat}`;
+        if (userId) {
+          await redis.eval(releaseLua, 1, lockKey, userId);
+        } else {
+          await safeRedisDel(lockKey);
+        }
       }
     }
   } catch (error) {
@@ -70,6 +91,8 @@ export const createBooking = async (req, res) => {
   let locksAcquired = false;
   let showIdForLock = null;
   let selectedSeatsForLock = [];
+  let seatsOccupiedInDb = false;
+  let bookingCreated = null;
 
   try {
     const userId = req.user.userId;
@@ -89,80 +112,98 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // 2. Database seat availability check
-    const isAvailable = await checkSeatsAvailiability(showId, selectedSeats);
-    
-    if (!isAvailable) {
-      await releaseSeatLocks(showId, selectedSeats);
+    // 2. Single Database lookup for show details & availability check (Eliminating redundant query)
+    const showData = await Show.findById(showId).populate("movie").lean();
+    if (!showData) {
+      await releaseSeatLocks(showId, selectedSeats, userId);
+      return res.status(404).json({ success: false, message: "Show not found" });
+    }
+
+    const occupiedSeats = showData.occupiedSeats || {};
+    const isAnySeatTaken = selectedSeats.some((seat) => occupiedSeats[seat]);
+    if (isAnySeatTaken) {
+      await releaseSeatLocks(showId, selectedSeats, userId);
       return res.status(400).json({
         success: false,
         message: "Selected seats are not available.",
       });
     }
 
-    // 3. Show details lookup
-    const showData = await Show.findById(showId).populate("movie");
-    if (!showData) {
-      await releaseSeatLocks(showId, selectedSeats);
-      return res.status(404).json({ success: false, message: "Show not found" });
+    // 3. Atomic MongoDB reservation update (Prevents race conditions if locks expire)
+    const atomicCondition = { _id: showId };
+    selectedSeats.forEach((seat) => {
+      atomicCondition[`occupiedSeats.${seat}`] = { $exists: false };
+    });
+
+    const seatUpdates = {};
+    selectedSeats.forEach((seat) => {
+      seatUpdates[`occupiedSeats.${seat}`] = userId;
+    });
+
+    const reservationResult = await Show.findOneAndUpdate(
+      atomicCondition,
+      { $set: seatUpdates },
+      { new: true }
+    );
+
+    if (!reservationResult) {
+      await releaseSeatLocks(showId, selectedSeats, userId);
+      return res.status(400).json({
+        success: false,
+        message: "One or more seats were just booked by another customer. Please select different seats.",
+      });
     }
 
+    seatsOccupiedInDb = true;
+
     // 4. Create new booking record
-    const booking = await Booking.create({
+    bookingCreated = await Booking.create({
       user: userId,
       show: showId,
       amount: showData.showPrice * selectedSeats.length,
       bookedSeats: selectedSeats,
     });
 
-    // 5. Update occupied seats in MongoDB
-    selectedSeats.forEach((seat) => {
-      showData.occupiedSeats[seat] = userId;
-    });
-
-    showData.markModified("occupiedSeats");
-    await showData.save();
-
     // Invalidate cached active shows & user recommendation cache
     await safeRedisDel("cache:active_shows");
     await safeRedisDel(`cache:recommendations:${userId}`);
 
-    // 6. Create Stripe checkout session (Fix currency precision with Math.round)
-    const stripeInstance = getStripeInstance();
+    // 5. Create Stripe checkout session
+    const stripe = getStripeInstance();
     const line_items = [{
       price_data: {
         currency: "usd",
         product_data: {
-          name: showData.movie.title,
+          name: showData.movie?.title || "Movie Ticket",
         },
-        unit_amount: Math.round(booking.amount * 100) // Corrected precision (cents)
+        unit_amount: Math.round(bookingCreated.amount * 100) // Precision cents
       },
       quantity: 1
     }];
 
-    const session = await stripeInstance.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
       success_url: `${origin}/loading/MyBooking`,
       cancel_url: `${origin}/MyBooking`,
       line_items: line_items,
       mode: "payment",
       metadata: {
-        bookingId: booking._id.toString(),
+        bookingId: bookingCreated._id.toString(),
       },
       expires_at: Math.floor(Date.now() / 1000) + 60 * 60 // 1 hour expiration
     });
 
-    booking.paymentLink = session.url;
-    await booking.save();
+    bookingCreated.paymentLink = session.url;
+    await bookingCreated.save();
 
-    // 7. Release Redis distributed locks after reservation saved
-    await releaseSeatLocks(showId, selectedSeats);
+    // 6. Safely release Redis distributed locks
+    await releaseSeatLocks(showId, selectedSeats, userId);
 
-    // 8. Trigger Inngest function to verify payment status after 10 mins
+    // 7. Trigger Inngest function to verify payment status after 10 mins
     try {
       await inngest.send({
         name: "app/checkpayment",
         data: {
-          bookingId: booking._id.toString(),
+          bookingId: bookingCreated._id.toString(),
         },
       });
     } catch (error) {
@@ -172,14 +213,37 @@ export const createBooking = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Booking created & seats reserved",
-      bookingId: booking._id,
-      amount: booking.amount,
+      bookingId: bookingCreated._id,
+      amount: bookingCreated.amount,
       url: session.url
     });
   } catch (error) {
-    if (locksAcquired && showIdForLock && selectedSeatsForLock) {
-      await releaseSeatLocks(showIdForLock, selectedSeatsForLock);
+    const userId = req.user?.userId;
+    if (locksAcquired && showIdForLock && selectedSeatsForLock.length > 0) {
+      await releaseSeatLocks(showIdForLock, selectedSeatsForLock, userId);
     }
+
+    // Rollback ghost booking and free occupied seats if downstream Stripe failed
+    if (seatsOccupiedInDb && showIdForLock && selectedSeatsForLock.length > 0) {
+      try {
+        const seatUnsets = {};
+        selectedSeatsForLock.forEach((seat) => {
+          seatUnsets[`occupiedSeats.${seat}`] = 1;
+        });
+        await Show.findByIdAndUpdate(showIdForLock, { $unset: seatUnsets });
+      } catch (rollbackErr) {
+        console.error("Failed to rollback seats in MongoDB:", rollbackErr.message);
+      }
+    }
+
+    if (bookingCreated) {
+      try {
+        await Booking.findByIdAndDelete(bookingCreated._id);
+      } catch (delErr) {
+        console.error("Failed to delete draft booking:", delErr.message);
+      }
+    }
+
     console.log("Booking error:", error.message);
     return res.status(500).json({ success: false, message: "Booking failed", error: error.message });
   }

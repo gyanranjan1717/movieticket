@@ -1,0 +1,95 @@
+import request from 'supertest';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import app from '../server.js';
+import Show from '../models/showModel.js';
+
+dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'movieticket_super_secret_jwt_key_2026';
+
+describe('3. Booking & Concurrency Protection Endpoints', () => {
+  let authToken;
+  let testShowId;
+  const uniqueTestSeat = 'JEST_SEAT_' + Date.now().toString().slice(-6);
+
+  beforeAll(async () => {
+    // Generate valid test JWT
+    authToken = jwt.sign(
+      { userId: 'loadtest_user_1', email: 'loadtest_1@example.com', role: 'user' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const show = await Show.findOne().lean();
+    testShowId = show?._id ? show._id.toString() : '68664b3d262e9a5920405712';
+  });
+
+  it('POST /api/booking/create should reject requests without Authorization token with 401', async () => {
+    const res = await request(app)
+      .post('/api/booking/create')
+      .send({
+        showId: testShowId,
+        selectedSeats: ['A1'],
+      });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('Authorization token required');
+  });
+
+  it('POST /api/booking/create should reject requests with invalid/tampered token with 401', async () => {
+    const res = await request(app)
+      .post('/api/booking/create')
+      .set('Authorization', 'Bearer tampered_invalid_token_123')
+      .send({
+        showId: testShowId,
+        selectedSeats: ['A1'],
+      });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('POST /api/booking/create should reject empty payload with 400 Zod Validation Error', async () => {
+    const res = await request(app)
+      .post('/api/booking/create')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({});
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('POST /api/booking/create should successfully create a booking for valid inputs (201 Created)', async () => {
+    const res = await request(app)
+      .post('/api/booking/create')
+      .set('Authorization', `Bearer ${authToken}`)
+      .set('origin', 'http://localhost:5173')
+      .send({
+        showId: testShowId,
+        selectedSeats: [uniqueTestSeat],
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.bookingId).toBeDefined();
+    expect(typeof res.body.bookingId).toBe('string');
+    expect(res.body.url).toContain('checkout.stripe.com');
+  });
+
+  it('POST /api/booking/create should reject duplicate booking on the exact same seat with 400', async () => {
+    // Immediately attempt to re-book the same seat that was just booked
+    const res = await request(app)
+      .post('/api/booking/create')
+      .set('Authorization', `Bearer ${authToken}`)
+      .set('origin', 'http://localhost:5173')
+      .send({
+        showId: testShowId,
+        selectedSeats: [uniqueTestSeat],
+      });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+});

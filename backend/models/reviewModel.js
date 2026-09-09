@@ -22,6 +22,10 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for fast movie review fetching and preventing duplicate reviews per user
+reviewSchema.index({ movie: 1, createdAt: -1 });
+reviewSchema.index({ movie: 1, user: 1 }, { unique: true });
+
 const Review = mongoose.model("Review", reviewSchema);
 
 export default Review;

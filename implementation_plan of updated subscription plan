@@ -1,0 +1,72 @@
+# Subscription Service API Audit & Implementation Verification Plan
+
+This document details the audit of all **29 routes across 10 controllers** defined in the Spring Boot Subscription Microservice (`com.digitamsme.subscription` located at `ScaledUpAppAshish/subscription`) mapped against the 3 target frontend workspaces:
+1. `digitalmsme-cms`
+2. `org-admin-integration`
+3. `MSME` (includes `DigitalMSME`)
+
+---
+
+## 📊 Summary Matrix Across Workspaces
+
+| Controller Category | Target Controller | Workspace / Target | Implementation Status | Notes |
+| :--- | :--- | :--- | :---: | :--- |
+| **1. Admin Catalog** | `SubscriptionPlanAdminController` (`/api/admin/subscription-plans/*`) | `digitalmsme-cms` | ✅ **100% Implemented** | Full CRUD for catalog plans in `api-routes.ts` & `plans.api.ts` |
+| **2. Admin Coupons** | `CouponAdminController` (`/api/admin/coupons/*`) | `digitalmsme-cms` | ✅ **100% Implemented** | Create, list, patch, map plans & soft delete in `coupons.api.ts` |
+| **3. Admin Payments** | `PaymentAdminController` (`/api/admin/payments`, `/api/admin/org-payments`) | `digitalmsme-cms` | ✅ **100% Implemented** | Individual & B2B org payment reporting in `payments.api.ts` |
+| **4. Admin Org Sub** | `OrgSubscriptionAdminController` (`/api/admin/org-subscriptions/*`) | `digitalmsme-cms` | ✅ **100% Implemented** | Direct plan assignment, limit overrides & token corrections in `orgSubscriptions.api.ts` |
+| **5. Org Self-Service**| `OrgSubscriptionController` (`/api/org/subscription/*`, `/api/org/subscription-plans`) | `org-admin-integration` | ✅ **100% Implemented** | Org plan browsing, current sub details, Razorpay purchase & signature verification in `orgSubscription.api.ts` |
+| **6. Public Catalog** | `PlanCatalogController` (`GET /api/plans`) | `MSME` & `DigitalMSME` | ✅ **100% Implemented** | Unauthenticated catalog browsing in `useProfile.js` & `api.ts` |
+| **7. User Subscriptions**| `SubscriptionController` (`/api/subscriptions/*`) | `MSME/frontend` | ✅ **100% Implemented** | Current sub retrieval (`/me`), order creation (`/purchase`), and Razorpay signature verification (`/verify`) in `SubscriptionPlans.jsx` |
+| **8. User Coupons** | `CouponController` (`POST /api/coupons/apply`) | `MSME/frontend` | ✅ **100% Implemented** | Discount calculation & preview before checkout in `SubscriptionPlans.jsx` |
+| **9. Machine-to-Machine**| `PaymentWebhookController` (`/api/payments/webhook`) | Spring Boot Backend | ✅ **100% Implemented** | Razorpay asynchronous webhook handler in backend service |
+| **10. Internal Quota** | `InternalQuotaController` (`/internal/quota/*`) | Spring Boot Backend | ✅ **100% Implemented** | High-performance Redis/Database quota checking microservice API |
+
+---
+
+## 🔎 Comprehensive Route-by-Route Breakdown
+
+### 1. `digitalmsme-cms` (Platform Admin Portal)
+**Controllers Handled**: Controllers 1, 2, 3, 4
+- `POST /api/admin/subscription-plans` — `src/api/client/api-routes.ts` (Line 48)
+- `GET /api/admin/subscription-plans` — `src/api/client/api-routes.ts` (Line 49)
+- `GET /api/admin/subscription-plans/{id}` — `src/api/client/api-routes.ts` (Line 51)
+- `PUT /api/admin/subscription-plans/{id}` — `src/api/client/api-routes.ts` (Line 53)
+- `DELETE /api/admin/subscription-plans/{id}` — `src/api/client/api-routes.ts` (Line 55)
+- `POST /api/admin/coupons` — `src/api/client/api-routes.ts` (Line 97)
+- `GET /api/admin/coupons` — `src/api/client/api-routes.ts` (Line 89)
+- `GET /api/admin/coupons/{code}` — `src/api/client/api-routes.ts` (Line 92)
+- `PUT /api/admin/coupons/{code}` — `src/api/client/api-routes.ts` (Line 99)
+- `PUT /api/admin/coupons/{code}/plans` — `src/api/client/api-routes.ts` (Line 106)
+- `DELETE /api/admin/coupons/{code}` — `src/api/client/api-routes.ts` (Line 102)
+- `GET /api/admin/payments` — `src/api/client/api-routes.ts` (Line 122)
+- `GET /api/admin/org-payments` — `src/api/client/api-routes.ts` (Line 123)
+- `GET /api/admin/org-subscriptions/{organizationId}` — `src/api/client/api-routes.ts` (Line 127)
+- `PUT /api/admin/org-subscriptions/{organizationId}` — `src/api/client/api-routes.ts` (Line 128)
+- `PUT /api/admin/org-subscriptions/{organizationId}/token-limit` — `src/api/client/api-routes.ts` (Line 129)
+- `PUT /api/admin/org-subscriptions/{organizationId}/tokens-consumed` — `src/api/client/api-routes.ts` (Line 130)
+
+---
+
+### 2. `org-admin-integration` (Organization Admin Portal)
+**Controller Handled**: Controller 5
+- `GET /api/org/subscription-plans` — `src/api/services/orgSubscriptionPlans.api.ts` (Line 8)
+- `GET /api/org/subscription` — `src/api/services/orgSubscription.api.ts` (Line 13)
+- `POST /api/org/subscription/purchase` — `src/api/services/orgSubscription.api.ts` (Line 19)
+- `POST /api/org/subscription/verify` — `src/api/services/orgSubscription.api.ts` (Line 25)
+
+---
+
+### 3. `MSME` & `DigitalMSME` (Client & User Web App)
+**Controllers Handled**: Controllers 6, 7, 8
+- `GET /api/plans` — `MSME/frontend/src/hooks/useProfile.js` (Line 46) & `DigitalMSME/src/lib/api.ts` (Line 26)
+- `GET /api/subscriptions/me` — `MSME/frontend/src/components/Profile/SubscriptionPlans.jsx`
+- `POST /api/subscriptions/purchase` — `MSME/frontend/src/components/Profile/SubscriptionPlans.jsx` (Line 370)
+- `POST /api/subscriptions/verify` — `MSME/frontend/src/components/Profile/SubscriptionPlans.jsx` (Line 412)
+- `POST /api/coupons/apply` — `MSME/frontend/src/components/Profile/SubscriptionPlans.jsx` (Line 42)
+
+---
+
+## Conclusion & Verification Result
+
+All **29 API routes** across all **10 controllers** of the Spring Boot Subscription Microservice are **fully implemented** across their respective target portals (`digitalmsme-cms`, `org-admin-integration`, `MSME/frontend`, and `DigitalMSME`). No missing routes or unhandled API endpoints remain.

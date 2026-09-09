@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import Otp from "../models/Otp.js";
 import sendEmail from "../configs/nodeMailer.js";
@@ -10,18 +11,23 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || "movieticket_super_secret_jwt_key_2026";
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Password Hashing Helper (Native Node.js PBKDF2)
-const hashPassword = (password) => {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return `${salt}:${hash}`;
+// Asynchronous non-blocking password hashing with bcrypt
+const hashPassword = async (password) => {
+  return await bcrypt.hash(password, 10);
 };
 
-const verifyPassword = (password, storedHash) => {
-  if (!storedHash || !storedHash.includes(":")) return false;
-  const [salt, originalHash] = storedHash.split(":");
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return hash === originalHash;
+// Verifies password against bcrypt or legacy PBKDF2 hash
+const verifyPassword = async (password, storedHash) => {
+  if (!storedHash) return false;
+
+  // Backward compatibility for existing PBKDF2 hashes
+  if (storedHash.includes(":")) {
+    const [salt, originalHash] = storedHash.split(":");
+    const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+    return hash === originalHash;
+  }
+
+  return await bcrypt.compare(password, storedHash);
 };
 
 // Generate JWT token helper
@@ -50,7 +56,7 @@ export const registerWithPassword = async (req, res) => {
     }
 
     const defaultName = name || email.split("@")[0];
-    const hashedPassword = hashPassword(password);
+    const hashedPassword = await hashPassword(password);
 
     user = await User.create({
       _id: "usr_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
@@ -97,12 +103,18 @@ export const loginWithPassword = async (req, res) => {
 
     if (!user.password) {
       // First time setting password for OTP/Google user
-      user.password = hashPassword(password);
+      user.password = await hashPassword(password);
       await user.save();
     } else {
-      const isMatch = verifyPassword(password, user.password);
+      const isMatch = await verifyPassword(password, user.password);
       if (!isMatch) {
         return res.status(401).json({ success: false, message: "Incorrect password. Please try again." });
+      }
+
+      // Automatically upgrade legacy PBKDF2 hash to bcrypt on successful login
+      if (user.password.includes(":")) {
+        user.password = await hashPassword(password);
+        await user.save();
       }
     }
 
@@ -149,14 +161,14 @@ export const loginAdminDirect = async (req, res) => {
         _id: "adm_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
         name: defaultName,
         email,
-        password: password ? hashPassword(password) : null,
+        password: password ? await hashPassword(password) : null,
         image: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(defaultName)}`,
         role: "admin",
         favorites: [],
       });
     } else {
       user.role = "admin";
-      if (password && !user.password) user.password = hashPassword(password);
+      if (password && !user.password) user.password = await hashPassword(password);
       await user.save();
     }
 
@@ -349,7 +361,7 @@ export const googleAuth = async (req, res) => {
 // 4. Get Current User Profile
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user.userId).select("-password").lean();
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }

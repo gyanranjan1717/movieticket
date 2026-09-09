@@ -12,5 +12,6 @@ const movieReminderSchema = new mongoose.Schema(
 );
 
 movieReminderSchema.index({ user: 1, movieId: 1 }, { unique: true });
+movieReminderSchema.index({ movieId: 1 });
 
 export default mongoose.model("MovieReminder", movieReminderSchema);

@@ -36,34 +36,33 @@ const fetchTrailerFromTmdb = async (movieId) => {
   return "https://www.youtube.com/watch?v=YoHD9XEInc0"; // default fallback
 };
 
-// Helper to format TMDB results with CDN proxy image paths
-const formatTmdbMovies = async (movies) => {
-  return Promise.all(
-    movies.map(async (m) => {
-      const poster = m.poster_path
-        ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w500${m.poster_path}`)}&output=webp`
-        : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
+// Helper to format TMDB results with CDN proxy image paths & deterministic trailers (Zero N+1 calls)
+const formatTmdbMovies = (movies) => {
+  return movies.map((m) => {
+    const poster = m.poster_path
+      ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w500${m.poster_path}`)}&output=webp`
+      : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
 
-      const backdrop = m.backdrop_path
-        ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w1280${m.backdrop_path}`)}&output=webp`
-        : poster;
+    const backdrop = m.backdrop_path
+      ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w1280${m.backdrop_path}`)}&output=webp`
+      : poster;
 
-      const trailerUrl = await fetchTrailerFromTmdb(m.id);
+    const movieTitle = m.title || m.original_title || "Featured Movie";
+    const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(movieTitle + " official trailer")}`;
 
-      return {
-        id: m.id,
-        title: m.title || m.original_title,
-        overview: m.overview,
-        release_date: m.release_date || "2026-09-30",
-        vote_average: Number((m.vote_average || 8.0).toFixed(1)),
-        vote_count: m.vote_count || 0,
-        poster_path: poster,
-        backdrop_path: backdrop,
-        trailerUrl: trailerUrl,
-        popularity: m.popularity,
-      };
-    })
-  );
+    return {
+      id: m.id,
+      title: movieTitle,
+      overview: m.overview,
+      release_date: m.release_date || "2026-09-30",
+      vote_average: Number((m.vote_average || 8.0).toFixed(1)),
+      vote_count: m.vote_count || 0,
+      poster_path: poster,
+      backdrop_path: backdrop,
+      trailerUrl: trailerUrl,
+      popularity: m.popularity,
+    };
+  });
 };
 
 /**
@@ -93,8 +92,8 @@ export const getUpcomingReleases = async (req, res) => {
       console.warn("TMDB upcoming fetch error, using local fallback:", err.message);
     }
 
-    // Fallback: Database movies
-    const dbMovies = await Movie.find().limit(8);
+    // Fallback: Database movies (lean)
+    const dbMovies = await Movie.find().limit(8).lean();
     const formattedDb = dbMovies.map((m) => ({
       id: m._id,
       title: m.title,
@@ -135,7 +134,7 @@ export const getNowPlaying = async (req, res) => {
       });
 
       if (data.results && data.results.length > 0) {
-        const formatted = await formatTmdbMovies(data.results);
+        const formatted = formatTmdbMovies(data.results);
         await safeRedisSet(cacheKey, JSON.stringify(formatted), "EX", 43200);
         return res.status(200).json({ success: true, movies: formatted, cached: false });
       }
@@ -143,8 +142,8 @@ export const getNowPlaying = async (req, res) => {
       console.warn("TMDB trending error:", err.message);
     }
 
-    // Fallback: DB movies
-    const dbMovies = await Movie.find().sort({ createdAt: -1 }).limit(10);
+    // Fallback: DB movies (lean)
+    const dbMovies = await Movie.find().sort({ createdAt: -1 }).limit(10).lean();
     return res.status(200).json({
       success: true,
       movies: dbMovies.map((m) => ({
@@ -188,7 +187,7 @@ export const getTopRated = async (req, res) => {
       });
 
       if (data.results && data.results.length > 0) {
-        const formatted = await formatTmdbMovies(data.results);
+        const formatted = formatTmdbMovies(data.results);
         await safeRedisSet(cacheKey, JSON.stringify(formatted), "EX", 43200);
         return res.status(200).json({ success: true, movies: formatted, cached: false });
       }
@@ -196,7 +195,7 @@ export const getTopRated = async (req, res) => {
       console.warn("TMDB top rated error:", err.message);
     }
 
-    const dbMovies = await Movie.find().sort({ vote_average: -1 }).limit(10);
+    const dbMovies = await Movie.find().sort({ vote_average: -1 }).limit(10).lean();
     return res.status(200).json({
       success: true,
       movies: dbMovies.map((m) => ({

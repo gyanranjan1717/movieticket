@@ -26,8 +26,13 @@ const bookingSchema = new mongoose.Schema({
     paymentLink: {
         type: String,
     }
-}, { timestamps: true })
+}, { timestamps: true });
 
-const Booking = mongoose.model("Booking",bookingSchema)
+// Indexes for fast user booking history, payment status filtering, and Inngest jobs
+bookingSchema.index({ user: 1, createdAt: -1 });
+bookingSchema.index({ show: 1, isPaid: 1 });
+bookingSchema.index({ isPaid: 1 });
+
+const Booking = mongoose.model("Booking", bookingSchema);
 
 export default Booking
