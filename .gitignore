@@ -1,6 +1,9 @@
 node_modules
 .env
 coverage
+**/coverage
 playwright-report
+**/playwright-report
 test-results
+**/test-results
 *.log
