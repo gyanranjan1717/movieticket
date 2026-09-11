@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MenuIcon, SearchIcon, TicketPlus, XIcon, UserIcon, LogOut, ShieldCheck, Heart, MapPin, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import LocationModal from './LocationModal';
+import { assets } from '../assets/assets';
 
 const NavBar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -26,9 +27,9 @@ const NavBar = () => {
       <div className="flex items-center gap-3 max-md:flex-1">
         <Link to='/'>
           <img 
-            src='https://fonts.freepik.com/api/render?variantId=12360&fontSize=36&text=Show%20Time'
+            src={assets.logo} 
             alt="Show Time Logo" 
-            className='w-32 sm:w-36 h-auto'
+            className='w-32 sm:w-36 h-8 sm:h-10 object-contain'
           />
         </Link>
 

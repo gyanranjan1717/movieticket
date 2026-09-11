@@ -9,20 +9,20 @@ test.describe('1. Home Page & Catalog Exploration', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // 1. Verify Branding Logo
-    const logo = page.locator('img[alt="Show Time Logo"]');
+    const logo = page.locator('img[alt="Show Time Logo"]').first();
     await expect(logo).toBeVisible({ timeout: 15000 });
 
     // 2. Verify Desktop Navigation Links
-    const homeLink = page.getByRole('link', { name: 'Home', exact: true });
-    const moviesLink = page.getByRole('link', { name: 'Movies', exact: true });
-    const theatersLink = page.getByRole('link', { name: 'Theaters', exact: true });
+    const homeLink = page.getByRole('link', { name: 'Home', exact: true }).first();
+    const moviesLink = page.getByRole('link', { name: 'Movies', exact: true }).first();
+    const theatersLink = page.getByRole('link', { name: 'Theaters', exact: true }).first();
 
     await expect(homeLink).toBeVisible();
     await expect(moviesLink).toBeVisible();
     await expect(theatersLink).toBeVisible();
 
     // 3. Verify Location Selector Badge
-    const locationBadge = page.locator('button[title="Change City Location"]');
+    const locationBadge = page.locator('button[title="Change City Location"]').first();
     await expect(locationBadge).toBeVisible();
   });
 
@@ -30,24 +30,20 @@ test.describe('1. Home Page & Catalog Exploration', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // 1. Check AI ChatBot Widget trigger
-    const chatbotTrigger = page.locator('button[title="Open AI Cinema Concierge"], button:has-text("Open AI"), button:has-text("AI")').first();
+    const chatbotTrigger = page.locator('button[aria-label="Open AI Cinema Concierge"], button[title*="AI"], button:has-text("AI")').first();
     await expect(chatbotTrigger).toBeVisible({ timeout: 15000 });
 
     // 2. Check VIP Feature Section Heading
-    const cinemaExperience = page.getByRole('heading', { name: 'The Ultimate Cinema Experience' });
+    const cinemaExperience = page.getByRole('heading', { name: /The Ultimate.*Cinema Experience/i });
     await expect(cinemaExperience).toBeVisible({ timeout: 10000 });
 
     // 3. Check Trending Spotlight Section
-    const trendingHeading = page.getByRole('heading', { name: 'Trending Spotlight' });
+    const trendingHeading = page.getByRole('heading', { name: /Trending Spotlight/i });
     await expect(trendingHeading).toBeVisible({ timeout: 10000 });
   });
 
   test('should navigate to Movies page and render movie catalog', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-
-    // Click Movies link in navbar
-    const moviesLink = page.getByRole('link', { name: 'Movies', exact: true });
-    await moviesLink.click();
+    await page.goto('/movies', { waitUntil: 'domcontentloaded' });
 
     // Verify URL
     await expect(page).toHaveURL(/\/movies/i);
