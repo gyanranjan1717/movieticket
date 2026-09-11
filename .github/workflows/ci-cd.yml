@@ -90,15 +90,17 @@ jobs:
           PORT: 5001
           JWT_SECRET: ci_test_jwt_secret_key_12345
           STRIPE_SECRET_KEY: sk_test_mock_stripe_ci_runner_key
-          MONGODB_URI: mongodb://localhost:27017/showtime_test
+          MONGODB_URI: mongodb://localhost:27017/movieticket
 
       - name: Run Code Coverage
         working-directory: backend
         run: npm run test:coverage
         env:
           NODE_ENV: test
+          PORT: 5001
           JWT_SECRET: ci_test_jwt_secret_key_12345
           STRIPE_SECRET_KEY: sk_test_mock_stripe_ci_runner_key
+          MONGODB_URI: mongodb://localhost:27017/movieticket
 
       - name: Archive Code Coverage Report
         uses: actions/upload-artifact@v4
