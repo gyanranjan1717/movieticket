@@ -26,17 +26,18 @@ export const mockShow = {
 };
 
 export async function setupApiMocks(page) {
-  // Mock all shows endpoint
-  await page.route('**/api/show/all', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true, shows: [mockShow] })
-    });
-  });
-
-  // Mock single show details
+  // Mock shows endpoints (handling /api/show/all and /api/show/:movieId)
   await page.route('**/api/show/*', async (route) => {
+    const url = route.request().url();
+    if (url.includes('/api/show/all')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, shows: [mockShow] })
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -47,6 +48,39 @@ export async function setupApiMocks(page) {
           '2026-09-09': [{ time: '18:00', showId: mockShow._id, showPrice: 15 }]
         }
       })
+    });
+  });
+
+  // Mock TMDB catalog endpoints (now-playing, upcoming, top-rated)
+  await page.route('**/api/tmdb/*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        movies: [
+          {
+            id: 'tmdb-1',
+            _id: 'tmdb-1',
+            title: 'Interstellar Horizons',
+            poster_path: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500',
+            backdrop_path: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200',
+            vote_average: 8.7,
+            release_date: '2026-11-20',
+            overview: 'Humanity reaches toward new dimensional boundaries.',
+            genres: ['Adventure', 'Sci-Fi']
+          }
+        ]
+      })
+    });
+  });
+
+  // Mock user favorites
+  await page.route('**/api/user/favorites', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, movies: [] })
     });
   });
 

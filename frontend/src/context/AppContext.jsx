@@ -78,14 +78,14 @@ export const AppProvider = ({ children }) => {
   const fetchShows = async () => {
     try {
       const { data } = await axios.get("/api/show/all");
-      if (data.success) {
+      if (data.success && Array.isArray(data.shows)) {
         setShows(data.shows);
       } else {
-        toast.error(data.message);
+        setShows([]);
       }
     } catch (error) {
       console.error("Error fetching shows:", error);
-      toast.error("Error loading shows.");
+      setShows([]);
     }
   };
 

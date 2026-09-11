@@ -12,7 +12,8 @@ const FeatureSection = () => {
 
   console.log("🎥 FeatureSection shows:", shows); // ✅ Debug this
 
-  const loading = shows.length === 0;
+  const safeShows = Array.isArray(shows) ? shows : [];
+  const loading = safeShows.length === 0;
 
   return (
     <div className="px-6 md:px-16 lg:px-24 xl:px-44 overflow-hidden">
@@ -34,7 +35,7 @@ const FeatureSection = () => {
       ) : (
         <>
           <div className="flex flex-wrap max-sm:justify-center gap-8 mt-8">
-            {shows.slice(0, 4).map((show) => {
+            {safeShows.slice(0, 4).map((show) => {
               console.log("🎬 Rendering show:", show); // Check here
 
               return (

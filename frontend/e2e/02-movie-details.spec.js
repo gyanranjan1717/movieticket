@@ -20,6 +20,10 @@ test.describe('2. Movie Details & Showtime Selection', () => {
     const dateSection = page.locator('#dateSelect').first();
     await expect(dateSection).toBeVisible({ timeout: 15000 });
 
+    // Wait for DateSelect content to finish rendering
+    const heading = page.locator('text=Choose Screening Date').or(page.locator('text=Screening Showtimes Opening Soon')).first();
+    await expect(heading).toBeVisible({ timeout: 15000 });
+
     // Check if screening dates buttons exist
     const dateButtons = page.locator('#dateSelect button:not(:has-text("Book Now")):not(:has-text("Remind"))');
     const dateCount = await dateButtons.count();
@@ -33,8 +37,8 @@ test.describe('2. Movie Details & Showtime Selection', () => {
       await expect(bookNowBtn).toBeVisible({ timeout: 10000 });
     } else {
       // Catalog Reference movie without scheduled shows
-      const reminderOrCatalog = page.locator('text=Catalog Reference Movie, text=Remind Me When Tickets Open, text=Screening Showtimes Opening Soon');
-      await expect(reminderOrCatalog.first()).toBeVisible();
+      const reminderOrCatalog = page.locator('text=Catalog Reference Movie').or(page.locator('text=Remind Me When Tickets Open')).first();
+      await expect(reminderOrCatalog).toBeVisible();
     }
   });
 });
