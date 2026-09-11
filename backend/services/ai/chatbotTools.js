@@ -98,7 +98,11 @@ Core Knowledge of ShowTime Platform:
     1. Check available seats for the show using 'getAvailableSeats'.
     2. If the user specified seats (e.g. "book E4, E5"), verify they are available and call 'bookTicketsViaAI'.
     3. If the user didn't specify seats (e.g. "book 2 tickets for Dune tonight"), check 'getAvailableSeats', pick the best recommended center seats from 'recommendedSeats', and call 'bookTicketsViaAI'.
-    4. When 'bookTicketsViaAI' succeeds, inform the user that their seats have been locked for 10 minutes and invite them to click the checkout button on their reservation card!
+    4. When 'bookTicketsViaAI' succeeds, inform the user that their seats have been locked for 10 minutes and invite them to complete payment using the 1-click checkout button on their reservation card below.
+    5. CRITICAL PAYMENT URL RULE: NEVER write long raw checkout URLs in markdown text; the interactive 1-click reservation card with the "Proceed to Stripe" button is automatically rendered below your message.
+
+Admin Features:
+- When an authorized administrator asks to add or attach movies (e.g. 10 to 12 movies) with standard showtimes spaced 3 to 4 hours apart, call the 'adminBatchAddMoviesAndShows' tool.
 
 Behavior Guidelines:
 - Be concise, friendly, and enthusiastic about cinema.
@@ -262,6 +266,35 @@ export const TOOL_DEFINITIONS = [
         }
       },
       required: ["showId", "selectedSeats"]
+    }
+  },
+  {
+    name: "adminBatchAddMoviesAndShows",
+    description: "ADMIN ONLY: Batch import 10-12 (or requested count) trending movies and automatically generate standard theatrical showtimes spaced 3-4 hours apart across upcoming days. Only authorized administrators can execute this tool.",
+    parameters: {
+      type: "object",
+      properties: {
+        count: {
+          type: "number",
+          description: "Number of movies to attach (default 10, range 1 to 20)"
+        },
+        gapHours: {
+          type: "number",
+          description: "Interval between showtimes in hours (default 3.5, e.g. 3 or 4 hours)"
+        },
+        days: {
+          type: "number",
+          description: "Number of days from today to schedule shows for (default 3)"
+        },
+        price: {
+          type: "number",
+          description: "Standard ticket price in USD (default 12)"
+        },
+        category: {
+          type: "string",
+          description: "Category of movies (e.g. 'trending', 'now_playing', 'action', 'sci-fi')"
+        }
+      }
     }
   }
 ];
@@ -822,8 +855,153 @@ export const executeToolCall = async (name, args, context = {}) => {
 
         return {
           success: true,
-          message: `Seats ${selectedSeats.join(', ')} have been reserved for you for 10 minutes! Total is $${totalAmount}. Please click below to complete your payment on Stripe.`,
+          message: `Seats ${selectedSeats.join(', ')} have been reserved for you for 10 minutes! Total is $${totalAmount}. Please complete your payment using the "Proceed to Stripe" button on your reservation card below.`,
           booking: bookingCardData
+        };
+      }
+
+      case "adminBatchAddMoviesAndShows": {
+        if (!context.isAdmin) {
+          return {
+            error: "Unauthorized: Only ShowTime administrators can batch-add movies and schedule showtimes. Please log in as an administrator to use this feature."
+          };
+        }
+
+        const count = Math.min(Math.max(Number(args.count) || 10, 1), 20);
+        const gapHours = Number(args.gapHours) || 3.5;
+        const days = Math.min(Math.max(Number(args.days) || 3, 1), 7);
+        const price = Number(args.price) || 12;
+        const category = args.category || "trending";
+
+        // 1. Fetch top trending / now playing movies from TMDB
+        let tmdbMovies = [];
+        try {
+          const endpoint = category === "now_playing"
+            ? `${TMDB_BASE_URL}/movie/now_playing`
+            : `${TMDB_BASE_URL}/trending/movie/week`;
+
+          const res = await axios.get(endpoint, {
+            params: { api_key: TMDB_API_KEY, language: "en-US" },
+            timeout: 8000
+          });
+          if (res.data?.results) {
+            tmdbMovies = res.data.results;
+          }
+        } catch (tmdbErr) {
+          console.warn("TMDB fetch in adminBatchAddMoviesAndShows failed:", tmdbErr.message);
+        }
+
+        if (tmdbMovies.length === 0) {
+          return { error: "Unable to retrieve movies from TMDB at this moment. Please check TMDB API key." };
+        }
+
+        // Standard showtime intervals (e.g. gap of 3.5 hours between shows: 10:00, 13:30, 17:00, 20:30)
+        const generateTimeSlots = (intervalHours) => {
+          const slots = [];
+          let currentMinutes = 10 * 60; // Start at 10:00 AM
+          const endMinutes = 23 * 60 + 30; // End by 11:30 PM
+          while (currentMinutes <= endMinutes) {
+            const h = Math.floor(currentMinutes / 60);
+            const m = currentMinutes % 60;
+            const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+            slots.push(timeStr);
+            currentMinutes += Math.round(intervalHours * 60);
+          }
+          return slots;
+        };
+
+        const timeSlots = generateTimeSlots(gapHours);
+        const targetMovies = tmdbMovies.slice(0, count);
+
+        const addedMovies = [];
+        const showsToCreate = [];
+
+        // Dates for scheduling (today + next (days - 1) days)
+        const scheduleDates = [];
+        const now = new Date();
+        for (let d = 0; d < days; d++) {
+          const dt = new Date(now);
+          dt.setDate(dt.getDate() + d);
+          scheduleDates.push(dt.toISOString().split("T")[0]);
+        }
+
+        for (const tm of targetMovies) {
+          // Check if movie already exists
+          let movie = await Movie.findOne({
+            $or: [{ watchmodeId: tm.id }, { title: tm.title }]
+          });
+
+          if (!movie) {
+            const posterUrl = tm.poster_path
+              ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w500${tm.poster_path}`)}&output=webp`
+              : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
+            const backdropUrl = tm.backdrop_path
+              ? `https://wsrv.nl/?url=${encodeURIComponent(`https://image.tmdb.org/t/p/w1280${tm.backdrop_path}`)}&output=webp`
+              : posterUrl;
+
+            movie = await Movie.create({
+              watchmodeId: tm.id || Math.floor(100000 + Math.random() * 900000),
+              title: tm.title,
+              poster: posterUrl,
+              backdrop: backdropUrl,
+              overview: tm.overview || "Exciting theatrical movie.",
+              releaseDate: tm.release_date || new Date().toISOString().split("T")[0],
+              genres: ["Action", "Drama", "Cinema"],
+              vote_average: Number((tm.vote_average || 8.5).toFixed(1)),
+              vote_count: tm.vote_count || 100,
+              runtime: 135,
+              language: tm.original_language || "English",
+              casts: []
+            });
+          }
+
+          addedMovies.push({
+            id: movie._id,
+            title: movie.title,
+            poster: movie.poster,
+            rating: movie.vote_average
+          });
+
+          // Schedule shows for each date and time slot
+          for (const dateStr of scheduleDates) {
+            for (const timeStr of timeSlots) {
+              const showDateTime = new Date(`${dateStr}T${timeStr}:00`);
+              if (showDateTime > now) {
+                const existingShow = await Show.findOne({
+                  movie: movie._id,
+                  showDateTime: showDateTime
+                });
+                if (!existingShow) {
+                  showsToCreate.push({
+                    movie: movie._id,
+                    showDateTime: showDateTime,
+                    showPrice: price,
+                    occupiedSeats: {}
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        if (showsToCreate.length > 0) {
+          await Show.insertMany(showsToCreate);
+        }
+
+        // Flush Redis caches so website immediately reflects new movies & shows
+        await safeRedisDel("cache:active_shows");
+        await safeRedisDel("cache:now_playing_movies");
+        await safeRedisDel("cache:admin_selectable_movies");
+
+        return {
+          success: true,
+          message: `Successfully attached ${addedMovies.length} movies and created ${showsToCreate.length} showtime slots spaced ${gapHours} hours apart across ${days} days.`,
+          totalMovies: addedMovies.length,
+          totalShowsCreated: showsToCreate.length,
+          gapHours,
+          standardTimings: timeSlots,
+          scheduledDates,
+          movies: addedMovies.map(m => formatMovieCard(m))
         };
       }
 

@@ -199,6 +199,7 @@ export class GeminiProvider extends BaseLLMProvider {
         booking: collectedCards.booking || null
       },
       provider: this.name,
+      
       model: this.model
     };
   }

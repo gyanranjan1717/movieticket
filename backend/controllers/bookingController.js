@@ -277,3 +277,67 @@ export const getOccupiedSeats = async (req, res) => {
     });
   }
 };
+
+export const getBookingStatus = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId).populate({
+      path: "show",
+      populate: { path: "movie" }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    // If not marked paid yet, check Stripe checkout session if available
+    if (!booking.isPaid && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const stripe = getStripeInstance();
+        const sessionMatch = booking.paymentLink?.match(/cs_[a-zA-Z0-9_]+/);
+        let stripeSession = null;
+        if (sessionMatch) {
+          stripeSession = await stripe.checkout.sessions.retrieve(sessionMatch[0]);
+        } else {
+          const sessions = await stripe.checkout.sessions.list({ limit: 10 });
+          stripeSession = sessions.data.find(s => s.metadata?.bookingId === bookingId);
+        }
+
+        if (stripeSession && stripeSession.payment_status === "paid") {
+          booking.isPaid = true;
+          booking.paymentLink = "";
+          await booking.save();
+
+          try {
+            await inngest.send({
+              name: "app/show.booked",
+              data: { bookingId }
+            });
+          } catch (e) {
+            console.error("Inngest send error:", e.message);
+          }
+        }
+      } catch (stripeErr) {
+        console.warn("Stripe status verification warning:", stripeErr.message);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      isPaid: Boolean(booking.isPaid),
+      booking: {
+        bookingId: booking._id,
+        isPaid: booking.isPaid,
+        amount: booking.amount,
+        bookedSeats: booking.bookedSeats,
+        movieTitle: booking.show?.movie?.title || "Movie",
+        showDateTime: booking.show?.showDateTime
+      }
+    });
+  } catch (error) {
+    console.error("Error getting booking status:", error);
+    return res.status(500).json({ success: false, message: "Failed to get booking status" });
+  }
+};
+

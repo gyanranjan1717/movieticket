@@ -1,5 +1,5 @@
 import express from "express";
-import { createBooking, getOccupiedSeats } from "../controllers/bookingController.js";
+import { createBooking, getOccupiedSeats, getBookingStatus } from "../controllers/bookingController.js";
 import { protectUser } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { createBookingSchema } from "../schemas/validationSchemas.js";
@@ -56,4 +56,22 @@ bookingRouter.post('/create', protectUser, validate(createBookingSchema), create
  */
 bookingRouter.get('/seats/:showId', getOccupiedSeats);
 
-export default bookingRouter;
+/**
+ * @openapi
+ * /api/booking/status/{bookingId}:
+ *   get:
+ *     summary: Check payment and reservation status of a booking
+ *     tags: [Bookings]
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Current payment and booking status
+ */
+bookingRouter.get('/status/:bookingId', getBookingStatus);
+
+export default bookingRouter;

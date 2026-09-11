@@ -23,7 +23,8 @@ import {
   Info,
   Layers,
   ArrowRight,
-  Volume2
+  Volume2,
+  CheckCircle2
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import TrailerModal from '../TrailerModal';
@@ -112,14 +113,17 @@ const generateDynamicLoadingStages = (prompt, city = 'Bengaluru') => {
   ];
 };
 
-const BookingReservationCard = ({ booking }) => {
+const BookingReservationCard = ({ booking, onBookingConfirmed, navigate }) => {
+  const [isPaid, setIsPaid] = useState(Boolean(booking.isPaid));
   const [timeLeft, setTimeLeft] = useState(() => {
+    if (booking.isPaid) return 0;
     const diff = Math.max(0, Math.floor(((booking.expiresAt || Date.now()) - Date.now()) / 1000));
     return diff || 600;
   });
 
+  // Countdown timer effect (only runs while unpaid)
   useEffect(() => {
-    if (timeLeft <= 0) return;
+    if (isPaid || timeLeft <= 0) return;
     const interval = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -130,31 +134,79 @@ const BookingReservationCard = ({ booking }) => {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isPaid, timeLeft]);
+
+  // Polling & focus listener to check payment completion on Stripe
+  useEffect(() => {
+    if (isPaid || !booking.bookingId) return;
+
+    let isMounted = true;
+
+    const checkPayment = async () => {
+      try {
+        const { data } = await axios.get(`/api/booking/status/${booking.bookingId}`);
+        if (data.success && data.isPaid && isMounted) {
+          setIsPaid(true);
+          setTimeLeft(0);
+          booking.isPaid = true;
+          onBookingConfirmed?.(booking);
+        }
+      } catch (err) {
+        // Silent polling catch
+      }
+    };
+
+    // Immediate check on mount/focus
+    checkPayment();
+
+    const intervalId = setInterval(checkPayment, 3500);
+    window.addEventListener('focus', checkPayment);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', checkPayment);
+    };
+  }, [isPaid, booking.bookingId]);
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
-  const isExpired = timeLeft <= 0;
+  const isExpired = !isPaid && timeLeft <= 0;
 
   return (
-    <div className="w-full mt-3 rounded-2xl bg-gradient-to-br from-gray-900 via-gray-900 to-amber-950/40 border border-amber-500/40 p-3.5 shadow-xl shadow-amber-950/30 text-left animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className={`w-full mt-3 rounded-2xl p-3.5 shadow-xl text-left animate-in fade-in slide-in-from-bottom-2 duration-300 border ${
+      isPaid
+        ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-emerald-950/40 border-emerald-500/50 shadow-emerald-950/30'
+        : 'bg-gradient-to-br from-gray-900 via-gray-900 to-amber-950/40 border-amber-500/40 shadow-amber-950/30'
+    }`}>
       {/* Top Banner with Lock & Countdown */}
       <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-gray-800/80">
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-            10-Min Atomic Seat Hold
+          <span className={`w-2 h-2 rounded-full ${isPaid ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-emerald-400 animate-pulse'}`} />
+          <span className={`text-[11px] font-bold uppercase tracking-wider ${isPaid ? 'text-emerald-300' : 'text-amber-300'}`}>
+            {isPaid ? 'Ticket Booked & Confirmed' : '10-Min Atomic Seat Hold'}
           </span>
         </div>
         <div className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold flex items-center gap-1 border ${
-          isExpired 
-            ? 'bg-red-500/20 text-red-400 border-red-500/30' 
-            : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+          isPaid
+            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+            : isExpired 
+              ? 'bg-red-500/20 text-red-400 border-red-500/30' 
+              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
         }`}>
-          <Clock className="w-3 h-3" />
-          <span>
-            {isExpired ? 'Hold Expired' : `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`}
-          </span>
+          {isPaid ? (
+            <>
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>Paid & Secured</span>
+            </>
+          ) : (
+            <>
+              <Clock className="w-3 h-3" />
+              <span>
+                {isExpired ? 'Hold Expired' : `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -181,7 +233,11 @@ const BookingReservationCard = ({ booking }) => {
             {booking.seats?.map(seat => (
               <span
                 key={seat}
-                className="px-2 py-0.5 text-[11px] font-bold font-mono rounded-md bg-primary/20 text-primary border border-primary/40 shadow-sm"
+                className={`px-2 py-0.5 text-[11px] font-bold font-mono rounded-md border shadow-sm ${
+                  isPaid
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-primary/20 text-primary border-primary/40'
+                }`}
               >
                 {seat}
               </span>
@@ -190,31 +246,46 @@ const BookingReservationCard = ({ booking }) => {
         </div>
       </div>
 
-      {/* Pricing & 1-Click Stripe Checkout CTA */}
+      {/* Pricing & 1-Click CTA */}
       <div className="mt-3 pt-2.5 border-t border-gray-800/80 flex items-center justify-between gap-3">
         <div>
-          <span className="block text-[10px] text-gray-400 uppercase font-semibold">Total Amount</span>
+          <span className="block text-[10px] text-gray-400 uppercase font-semibold">
+            {isPaid ? 'Amount Paid' : 'Total Amount'}
+          </span>
           <span className="text-base font-extrabold text-emerald-400">
             ${booking.amount?.toFixed ? booking.amount.toFixed(2) : booking.amount}
           </span>
         </div>
 
-        <button
-          disabled={isExpired}
-          onClick={() => {
-            if (booking.stripeUrl) {
-              window.location.href = booking.stripeUrl;
-            }
-          }}
-          className={`flex-1 max-w-[200px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg transition cursor-pointer ${
-            isExpired
-              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-              : 'bg-gradient-to-r from-amber-500 via-primary to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white shadow-primary/30 active:scale-95'
-          }`}
-        >
-          <span>{isExpired ? 'Hold Expired' : 'Proceed to Stripe'}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+        {isPaid ? (
+          <button
+            onClick={() => {
+              if (navigate) navigate('/MyBooking');
+              else window.location.href = '/MyBooking';
+            }}
+            className="flex-1 max-w-[210px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg transition cursor-pointer bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-950/40 active:scale-95"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>View in My Bookings</span>
+          </button>
+        ) : (
+          <button
+            disabled={isExpired}
+            onClick={() => {
+              if (booking.stripeUrl) {
+                window.location.href = booking.stripeUrl;
+              }
+            }}
+            className={`flex-1 max-w-[200px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg transition cursor-pointer ${
+              isExpired
+                ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                : 'bg-gradient-to-r from-amber-500 via-primary to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white shadow-primary/30 active:scale-95'
+            }`}
+          >
+            <span>{isExpired ? 'Hold Expired' : 'Proceed to Stripe'}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -263,7 +334,45 @@ const ChatBotWidget = () => {
 
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, selectedCity, favoriteMovies } = useAppContext();
+  const { user, isAdmin, selectedCity, favoriteMovies } = useAppContext();
+
+  const handleBookingConfirmed = (confirmedBooking) => {
+    setMessages(prev => {
+      const updated = prev.map(m => {
+        if (m.cards?.booking?.bookingId === confirmedBooking.bookingId) {
+          return {
+            ...m,
+            cards: {
+              ...m.cards,
+              booking: { ...m.cards.booking, isPaid: true }
+            }
+          };
+        }
+        return m;
+      });
+
+      const alreadyHasConfirmation = updated.some(m =>
+        m.role === 'assistant' &&
+        m.content?.includes(confirmedBooking.movieTitle) &&
+        m.content?.includes('Ticket is Booked')
+      );
+
+      if (alreadyHasConfirmation) return updated;
+
+      const aiMsg = {
+        role: 'assistant',
+        content: `🎉 **Payment Confirmed! Your Ticket is Booked!**\n\nYour reservation for **${confirmedBooking.movieTitle}** is complete!\n\n- **Seats:** ${confirmedBooking.seats?.join(', ')}\n- **Date & Time:** ${confirmedBooking.formattedDate} at ${confirmedBooking.formattedTime}\n- **Amount Paid:** $${Number(confirmedBooking.amount).toFixed(2)}\n\nYour seats are confirmed and your QR ticket is ready in **[My Bookings](/MyBooking)**.\n\nEnjoy the movie! 🍿🎬`,
+        cards: {},
+        provider: config.activeProvider,
+        model: config.activeModel,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      return [...updated, aiMsg];
+    });
+
+    toast.success("Ticket Confirmed & Booked! 🎟️");
+  };
 
   // Cycle loading stages every 1.3s while loading
   useEffect(() => {
@@ -398,10 +507,12 @@ const ChatBotWidget = () => {
     setInputMessage('');
     setLoading(true);
 
-    // Build context object
+    // Build context object with admin awareness
     const context = {
       userId: user?._id || user?.id || null,
       userName: user?.name || null,
+      userRole: user?.role || (isAdmin ? 'admin' : 'user'),
+      isAdmin: Boolean(isAdmin || user?.role === 'admin' || location.pathname.startsWith('/admin')),
       userCity: selectedCity?.name || 'Bengaluru',
       currentPath: location.pathname,
       favoriteCount: favoriteMovies?.length || 0
@@ -593,7 +704,7 @@ const ChatBotWidget = () => {
                   className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-2 animate-in fade-in duration-300`}
                 >
                   <div
-                    className={`max-w-[88%] md:max-w-[85%] rounded-3xl p-4 text-sm leading-relaxed shadow-lg ${
+                    className={`max-w-[88%] md:max-w-[85%] rounded-3xl p-4 text-sm leading-relaxed shadow-lg break-words [overflow-wrap:anywhere] overflow-hidden ${
                       isUser
                         ? 'bg-gradient-to-r from-primary to-amber-600 text-white rounded-tr-none'
                         : 'bg-gray-900/90 text-gray-200 border border-gray-800/80 rounded-tl-none'
@@ -608,7 +719,7 @@ const ChatBotWidget = () => {
                         }}
                       />
                     ) : (
-                      <div className="whitespace-pre-wrap">
+                      <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] overflow-hidden">
                         <FormatMarkdown text={msg.content} />
                       </div>
                     )}
@@ -779,7 +890,11 @@ const ChatBotWidget = () => {
 
                   {/* Render 1-Click Ticket Reservation Card if present */}
                   {!isCurrentlyStreaming && msg.cards?.booking && (
-                    <BookingReservationCard booking={msg.cards.booking} />
+                    <BookingReservationCard
+                      booking={msg.cards.booking}
+                      onBookingConfirmed={handleBookingConfirmed}
+                      navigate={navigate}
+                    />
                   )}
                 </div>
               );
@@ -853,11 +968,21 @@ const ChatBotWidget = () => {
           {/* Quick Suggestion Chips */}
           {messages.length <= 2 && !loading && (
             <div className="px-4 md:px-6 py-2 border-t border-gray-800/60 bg-gray-950/80 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
-              {config.suggestedPrompts.map((prompt, idx) => (
+              {(Boolean(isAdmin || user?.role === 'admin' || location.pathname.startsWith('/admin'))
+                ? [
+                    "⚡ Batch add 10 trending movies (3.5hr gap)",
+                    ...config.suggestedPrompts
+                  ]
+                : config.suggestedPrompts
+              ).map((prompt, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSendMessage(prompt)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-900 hover:bg-gray-850 text-gray-300 hover:text-white border border-gray-800 hover:border-primary/50 transition cursor-pointer shrink-0 whitespace-nowrap shadow-sm"
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer shrink-0 whitespace-nowrap shadow-sm border ${
+                    prompt.startsWith("⚡")
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                      : 'bg-gray-900 hover:bg-gray-850 text-gray-300 hover:text-white border-gray-800 hover:border-primary/50'
+                  }`}
                 >
                   {prompt}
                 </button>
@@ -967,10 +1092,13 @@ const TypewriterReveal = ({ text, onComplete, speed = 12 }) => {
 const FormatMarkdown = ({ text }) => {
   if (!text) return null;
 
+  // Merge split markdown links across newlines: [Title]\n(http...) -> [Title](http...)
+  const normalizedText = text.replace(/\[([^\]]+)\]\s*\n+\s*\((https?:\/\/[^\s\)]+)\)/g, '[$1]($2)');
+
   // Split lines
-  const lines = text.split('\n');
+  const lines = normalizedText.split('\n');
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5 break-words [overflow-wrap:anywhere] overflow-hidden max-w-full">
       {lines.map((line, idx) => {
         let content = line;
         const isBullet = content.trim().startsWith('- ') || content.trim().startsWith('* ');
@@ -979,9 +1107,10 @@ const FormatMarkdown = ({ text }) => {
         }
 
         return (
-          <div key={idx} className={isBullet ? 'flex items-start gap-2 pl-1' : ''}>
-            {isBullet && <span className="text-primary font-bold mt-0.5">•</span>}
+          <div key={idx} className={`break-words [overflow-wrap:anywhere] max-w-full ${isBullet ? 'flex items-start gap-2 pl-1' : ''}`}>
+            {isBullet && <span className="text-primary font-bold mt-0.5 shrink-0">•</span>}
             <span
+              className="break-words [overflow-wrap:anywhere] leading-relaxed block overflow-hidden max-w-full"
               dangerouslySetInnerHTML={{
                 __html: parseInlineMarkdown(content)
               }}
@@ -997,7 +1126,13 @@ function parseInlineMarkdown(str) {
   return str
     .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-bold">$1</strong>')
     .replace(/\*(.*?)\*/g, '<em class="text-gray-300">$1</em>')
-    .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-gray-800 text-amber-300 font-mono text-[11px]">$1</code>');
+    .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-gray-800 text-amber-300 font-mono text-[11px]">$1</code>')
+    // Markdown external links: [Title](https://...)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2.5 py-1 my-1 rounded-xl bg-gradient-to-r from-primary/25 to-amber-500/25 hover:from-primary/40 hover:to-amber-500/40 text-amber-300 hover:text-white border border-amber-500/40 font-semibold text-xs break-all transition shadow-sm"><span>$1</span><span class="text-[10px]">↗</span></a>')
+    // Internal app links: [Title](/route)
+    .replace(/\[([^\]]+)\]\((\/[^\s\)]+)\)/g, '<a href="$2" class="inline-flex items-center gap-1 text-primary hover:text-amber-300 font-semibold underline underline-offset-2 break-all transition"><span>$1</span></a>')
+    // Bare URLs not preceded by href="
+    .replace(/(?<!href=")(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-amber-400 hover:text-amber-300 font-mono text-xs underline break-all inline-block max-w-full truncate align-bottom">$1 ↗</a>');
 }
 
 export default ChatBotWidget;

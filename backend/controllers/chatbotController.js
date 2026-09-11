@@ -17,22 +17,28 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // Attempt to extract userId from optional Authorization header
+    // Attempt to extract userId and userRole from optional Authorization header
     let userId = context.userId || null;
+    let userRole = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         userId = decoded.id || decoded.userId || decoded.sub;
+        userRole = decoded.role;
       } catch (err) {
         // Token optional for public chat
       }
     }
 
+    const isAdmin = Boolean(context.isAdmin || userRole === 'admin');
+
     const enhancedContext = {
       ...context,
       userId,
+      userRole,
+      isAdmin,
       origin: req.headers.origin || context.origin || "http://localhost:5173"
     };
 
@@ -67,9 +73,17 @@ export const sendMessage = async (req, res) => {
 
     // Prepare system prompt
     let fullSystemPrompt = SYSTEM_PROMPT;
+    if (isAdmin) {
+      fullSystemPrompt += `\n\nADMIN MODE ACTIVATED: You are currently speaking with an authorized ShowTime Administrator. You have permission to call administrative tools like 'adminBatchAddMoviesAndShows' to batch-add 10-12 movies with standard 3-4 hour showtime intervals. When the admin requests this, call the tool directly and confirm the schedule.`;
+    }
     if (dbConfig.systemPromptOverride && dbConfig.systemPromptOverride.trim()) {
       fullSystemPrompt += `\n\nAdditional Admin Instructions:\n${dbConfig.systemPromptOverride}`;
     }
+
+    // Filter tools for non-admins
+    const activeTools = isAdmin
+      ? TOOL_DEFINITIONS
+      : TOOL_DEFINITIONS.filter(t => t.name !== 'adminBatchAddMoviesAndShows');
 
     // Performance Optimization: Slice to recent 6 conversation turns to prevent token bloat & high latency
     const recentMessages = messages.slice(-6);
@@ -78,7 +92,7 @@ export const sendMessage = async (req, res) => {
     const aiResponse = await provider.generateResponse({
       messages: recentMessages,
       systemPrompt: fullSystemPrompt,
-      tools: TOOL_DEFINITIONS,
+      tools: activeTools,
       executeTool: executeToolCall,
       context: enhancedContext
     });
