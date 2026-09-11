@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import app from '../server.js';
 import mongoose from 'mongoose';
 import Show from '../models/showModel.js';
+import User from '../models/User.js';
 
 dotenv.config();
 
@@ -15,13 +16,26 @@ describe('3. Booking & Concurrency Protection Endpoints', () => {
   const uniqueTestSeat = 'JEST_SEAT_' + Date.now().toString().slice(-6);
 
   beforeAll(async () => {
-    // Generate valid test JWT
+    // 1. Ensure test User exists in database so protectUser middleware verifies it
+    const testUserId = 'test_jest_user_id_1';
+    let testUser = await User.findById(testUserId);
+    if (!testUser) {
+      testUser = await User.create({
+        _id: testUserId,
+        name: 'Jest Test User',
+        email: 'jest_test_user@example.com',
+        role: 'user'
+      });
+    }
+
+    // 2. Generate valid test JWT
     authToken = jwt.sign(
-      { userId: 'loadtest_user_1', email: 'loadtest_1@example.com', role: 'user' },
+      { userId: testUser._id, email: testUser.email, role: testUser.role },
       JWT_SECRET,
       { expiresIn: '1h' }
     );
 
+    // 3. Ensure test Show exists in database
     let show = await Show.findOne();
     if (!show) {
       show = await Show.create({
