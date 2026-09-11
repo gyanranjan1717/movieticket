@@ -112,6 +112,114 @@ const generateDynamicLoadingStages = (prompt, city = 'Bengaluru') => {
   ];
 };
 
+const BookingReservationCard = ({ booking }) => {
+  const [timeLeft, setTimeLeft] = useState(() => {
+    const diff = Math.max(0, Math.floor(((booking.expiresAt || Date.now()) - Date.now()) / 1000));
+    return diff || 600;
+  });
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const interval = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+  const isExpired = timeLeft <= 0;
+
+  return (
+    <div className="w-full mt-3 rounded-2xl bg-gradient-to-br from-gray-900 via-gray-900 to-amber-950/40 border border-amber-500/40 p-3.5 shadow-xl shadow-amber-950/30 text-left animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {/* Top Banner with Lock & Countdown */}
+      <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-gray-800/80">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+            10-Min Atomic Seat Hold
+          </span>
+        </div>
+        <div className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold flex items-center gap-1 border ${
+          isExpired 
+            ? 'bg-red-500/20 text-red-400 border-red-500/30' 
+            : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+        }`}>
+          <Clock className="w-3 h-3" />
+          <span>
+            {isExpired ? 'Hold Expired' : `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`}
+          </span>
+        </div>
+      </div>
+
+      {/* Movie Details & Poster */}
+      <div className="flex gap-3 items-center">
+        {booking.poster && (
+          <img
+            src={booking.poster}
+            alt={booking.movieTitle}
+            className="w-14 h-20 object-cover rounded-xl shadow-md border border-gray-800 shrink-0"
+          />
+        )}
+        <div className="flex-1 overflow-hidden">
+          <h4 className="font-bold text-white text-sm truncate">
+            {booking.movieTitle}
+          </h4>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            {booking.formattedDate} • <span className="text-amber-400 font-semibold">{booking.formattedTime}</span>
+          </p>
+          
+          {/* Seats Pill Badges */}
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            <span className="text-[10px] text-gray-400 font-medium">Seats:</span>
+            {booking.seats?.map(seat => (
+              <span
+                key={seat}
+                className="px-2 py-0.5 text-[11px] font-bold font-mono rounded-md bg-primary/20 text-primary border border-primary/40 shadow-sm"
+              >
+                {seat}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Pricing & 1-Click Stripe Checkout CTA */}
+      <div className="mt-3 pt-2.5 border-t border-gray-800/80 flex items-center justify-between gap-3">
+        <div>
+          <span className="block text-[10px] text-gray-400 uppercase font-semibold">Total Amount</span>
+          <span className="text-base font-extrabold text-emerald-400">
+            ${booking.amount?.toFixed ? booking.amount.toFixed(2) : booking.amount}
+          </span>
+        </div>
+
+        <button
+          disabled={isExpired}
+          onClick={() => {
+            if (booking.stripeUrl) {
+              window.location.href = booking.stripeUrl;
+            }
+          }}
+          className={`flex-1 max-w-[200px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg transition cursor-pointer ${
+            isExpired
+              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+              : 'bg-gradient-to-r from-amber-500 via-primary to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white shadow-primary/30 active:scale-95'
+          }`}
+        >
+          <span>{isExpired ? 'Hold Expired' : 'Proceed to Stripe'}</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ChatBotWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -667,6 +775,11 @@ const ChatBotWidget = () => {
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {/* Render 1-Click Ticket Reservation Card if present */}
+                  {!isCurrentlyStreaming && msg.cards?.booking && (
+                    <BookingReservationCard booking={msg.cards.booking} />
                   )}
                 </div>
               );

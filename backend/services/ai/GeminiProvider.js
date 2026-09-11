@@ -152,6 +152,9 @@ export class GeminiProvider extends BaseLLMProvider {
           if (toolData.theaters && Array.isArray(toolData.theaters)) {
             collectedCards.theaters.push(...toolData.theaters);
           }
+          if (toolData.booking) {
+            collectedCards.booking = toolData.booking;
+          }
 
           functionResponseParts.push({
             functionResponse: {
@@ -192,7 +195,8 @@ export class GeminiProvider extends BaseLLMProvider {
       cards: {
         movies: deduplicateById(collectedCards.movies),
         shows: deduplicateById(collectedCards.shows, 'showId'),
-        theaters: deduplicateById(collectedCards.theaters, 'id')
+        theaters: deduplicateById(collectedCards.theaters, 'id'),
+        booking: collectedCards.booking || null
       },
       provider: this.name,
       model: this.model

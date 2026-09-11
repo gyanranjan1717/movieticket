@@ -5,7 +5,7 @@ import { inngest } from "../inngest/index.js";
 import redis, { safeRedisDel, safeRedisSet } from "../configs/redis.js";
 
 let stripeInstance = null;
-const getStripeInstance = () => {
+export const getStripeInstance = () => {
   if (!stripeInstance) {
     if (!process.env.STRIPE_SECRET_KEY) {
       throw new Error("STRIPE_SECRET_KEY is not defined in environment variables");

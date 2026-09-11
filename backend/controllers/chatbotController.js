@@ -32,7 +32,8 @@ export const sendMessage = async (req, res) => {
 
     const enhancedContext = {
       ...context,
-      userId
+      userId,
+      origin: req.headers.origin || context.origin || "http://localhost:5173"
     };
 
     // Load active config from DB

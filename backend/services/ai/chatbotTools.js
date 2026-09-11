@@ -2,7 +2,8 @@ import axios from 'axios';
 import Movie from '../../models/movieModel.js';
 import Show from '../../models/showModel.js';
 import Booking from '../../models/bookingModel.js';
-import { safeRedisGet, safeRedisSet } from '../../configs/redis.js';
+import { safeRedisGet, safeRedisSet, safeRedisDel } from '../../configs/redis.js';
+import { acquireSeatLocks, releaseSeatLocks, getStripeInstance } from '../../controllers/bookingController.js';
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_API_KEY = process.env.TMDB_API_KEY || "b7137153ea0b11c6c469fb17a7e38dea";
@@ -92,6 +93,12 @@ Core Knowledge of ShowTime Platform:
 - **Theaters & Live Directions**: ShowTime features premium theaters with IMAX 3D, Dolby Atmos, and 4DX. Users can click "Get Directions" on the Theaters page for live turn-by-turn routing.
 - **VIP Experience**: Includes plush leather recliners, in-seat gourmet dining, and butler service.
 - **Reminders**: Users can set reminders on upcoming movies to get notified when ticket booking opens.
+- **Autonomous Ticket Booking (Conversational Commerce)**: You have direct tools to inspect seat availability (`getAvailableSeats`) and book tickets for users (`bookTicketsViaAI`).
+  * When a user wants to book tickets or asks for seats:
+    1. Check available seats for the show using `getAvailableSeats`.
+    2. If the user specified seats (e.g. "book E4, E5"), verify they are available and call `bookTicketsViaAI`.
+    3. If the user didn't specify seats (e.g. "book 2 tickets for Dune tonight"), check `getAvailableSeats`, pick the best recommended center seats from `recommendedSeats`, and call `bookTicketsViaAI`.
+    4. When `bookTicketsViaAI` succeeds, inform the user that their seats have been locked for 10 minutes and invite them to click the checkout button on their reservation card!
 
 Behavior Guidelines:
 - Be concise, friendly, and enthusiastic about cinema.
@@ -222,6 +229,39 @@ export const TOOL_DEFINITIONS = [
         }
       },
       required: ["featureName"]
+    }
+  },
+  {
+    name: "getAvailableSeats",
+    description: "Inspect real-time available and occupied seats for a movie show, categorized by tiers (Standard, Premium, VIP Recliner), along with best recommended center seats.",
+    parameters: {
+      type: "object",
+      properties: {
+        showId: {
+          type: "string",
+          description: "The MongoDB ObjectId of the show"
+        }
+      },
+      required: ["showId"]
+    }
+  },
+  {
+    name: "bookTicketsViaAI",
+    description: "Reserve cinema seats, acquire the 10-minute atomic Redis lock, and generate a secure 1-click Stripe payment checkout session for the user.",
+    parameters: {
+      type: "object",
+      properties: {
+        showId: {
+          type: "string",
+          description: "The MongoDB ObjectId of the show to book"
+        },
+        selectedSeats: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of seat identifiers to book (e.g. ['E4', 'E5'] or ['A1'])"
+        }
+      },
+      required: ["showId", "selectedSeats"]
     }
   }
 ];
@@ -600,6 +640,190 @@ export const executeToolCall = async (name, args, context = {}) => {
         return knowledgeMap[featureName] || {
           title: "ShowTime Cinema Platform",
           explanation: "ShowTime is your all-in-one smart movie booking portal with live seat locking, instant showtimes, route navigation, and AI concierge assistance."
+        };
+      }
+
+      case "getAvailableSeats": {
+        const { showId } = args || {};
+        if (!showId) return { error: "showId is required" };
+
+        const show = await Show.findById(showId).populate('movie', 'title poster backdrop showPrice').lean();
+        if (!show) return { error: "Show not found" };
+
+        const occupiedSeatsObj = show.occupiedSeats || {};
+        const occupiedSet = new Set(Object.keys(occupiedSeatsObj));
+
+        const allRows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+        const seatsByTier = {
+          standard: [],
+          premium: [],
+          vip: []
+        };
+
+        for (const row of allRows) {
+          const tier = ["A", "B", "C", "D"].includes(row) ? "standard" : ["E", "F", "G", "H"].includes(row) ? "premium" : "vip";
+          for (let i = 1; i <= 9; i++) {
+            const seatCode = `${row}${i}`;
+            if (!occupiedSet.has(seatCode)) {
+              seatsByTier[tier].push(seatCode);
+            }
+          }
+        }
+
+        const preferredOrder = ["E4", "E5", "E6", "F4", "F5", "F6", "D4", "D5", "D6", "C4", "C5", "C6", "G4", "G5", "G6", "I4", "I5"];
+        const recommendedSeats = preferredOrder.filter(s => !occupiedSet.has(s)).slice(0, 4);
+
+        return {
+          found: true,
+          showId: show._id,
+          movieTitle: show.movie?.title,
+          poster: show.movie?.poster,
+          showDateTime: show.showDateTime,
+          formattedTime: new Date(show.showDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          formattedDate: new Date(show.showDateTime).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+          basePrice: show.showPrice || 12,
+          totalOccupied: occupiedSet.size,
+          totalAvailable: 90 - occupiedSet.size,
+          recommendedSeats,
+          availableSeatsSummary: {
+            standardCount: seatsByTier.standard.length,
+            premiumCount: seatsByTier.premium.length,
+            vipCount: seatsByTier.vip.length
+          },
+          sampleAvailableSeats: {
+            standard: seatsByTier.standard.slice(0, 6),
+            premium: seatsByTier.premium.slice(0, 6),
+            vip: seatsByTier.vip.slice(0, 6)
+          }
+        };
+      }
+
+      case "bookTicketsViaAI": {
+        const { showId, selectedSeats } = args || {};
+        const userId = context.userId;
+
+        if (!userId) {
+          return {
+            success: false,
+            authenticated: false,
+            message: "User must be signed in to reserve tickets. Please log in to your ShowTime account to complete this booking."
+          };
+        }
+
+        if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
+          return {
+            success: false,
+            message: "Please specify both the show and at least one seat to book."
+          };
+        }
+
+        // 1. Acquire Redis distributed lock
+        const locksAcquired = await acquireSeatLocks(showId, selectedSeats, userId);
+        if (!locksAcquired) {
+          return {
+            success: false,
+            message: `Selected seats (${selectedSeats.join(', ')}) are currently being held or booked by another customer. Please choose different seats.`
+          };
+        }
+
+        // 2. Lookup show
+        const showData = await Show.findById(showId).populate("movie").lean();
+        if (!showData) {
+          await releaseSeatLocks(showId, selectedSeats, userId);
+          return { success: false, message: "Show not found." };
+        }
+
+        const occupiedSeats = showData.occupiedSeats || {};
+        const isAnySeatTaken = selectedSeats.some(seat => occupiedSeats[seat]);
+        if (isAnySeatTaken) {
+          await releaseSeatLocks(showId, selectedSeats, userId);
+          return { success: false, message: "One or more of the selected seats are already booked." };
+        }
+
+        // 3. Atomic MongoDB reservation update
+        const atomicCondition = { _id: showId };
+        selectedSeats.forEach(seat => {
+          atomicCondition[`occupiedSeats.${seat}`] = { $exists: false };
+        });
+
+        const seatUpdates = {};
+        selectedSeats.forEach(seat => {
+          seatUpdates[`occupiedSeats.${seat}`] = userId;
+        });
+
+        const reservationResult = await Show.findOneAndUpdate(
+          atomicCondition,
+          { $set: seatUpdates },
+          { new: true }
+        );
+
+        if (!reservationResult) {
+          await releaseSeatLocks(showId, selectedSeats, userId);
+          return { success: false, message: "Selected seats were just booked by another customer." };
+        }
+
+        const basePrice = showData.showPrice || 12;
+        const totalAmount = basePrice * selectedSeats.length;
+
+        // 4. Create new Booking document
+        const bookingCreated = await Booking.create({
+          user: userId,
+          show: showId,
+          amount: totalAmount,
+          bookedSeats: selectedSeats
+        });
+
+        await safeRedisDel("cache:active_shows");
+        await safeRedisDel(`cache:recommendations:${userId}`);
+
+        // 5. Create real Stripe Checkout Session
+        const stripe = getStripeInstance();
+        const origin = context.origin || "http://localhost:5173";
+
+        const session = await stripe.checkout.sessions.create({
+          success_url: `${origin}/loading/MyBooking`,
+          cancel_url: `${origin}/MyBooking`,
+          line_items: [{
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `${showData.movie?.title || 'Movie Ticket'} (${selectedSeats.join(', ')})`,
+                description: `ShowTime Cinema: ${new Date(showData.showDateTime).toLocaleString()} - Seats: ${selectedSeats.join(', ')}`
+              },
+              unit_amount: Math.round(totalAmount * 100)
+            },
+            quantity: 1
+          }],
+          mode: "payment",
+          metadata: {
+            bookingId: bookingCreated._id.toString()
+          },
+          expires_at: Math.floor(Date.now() / 1000) + 60 * 60
+        });
+
+        bookingCreated.paymentLink = session.url;
+        await bookingCreated.save();
+
+        // Release Redis lock safely
+        await releaseSeatLocks(showId, selectedSeats, userId);
+
+        const bookingCardData = {
+          bookingId: bookingCreated._id.toString(),
+          movieTitle: showData.movie?.title || "Movie",
+          poster: showData.movie?.poster,
+          showDateTime: showData.showDateTime,
+          formattedDate: new Date(showData.showDateTime).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+          formattedTime: new Date(showData.showDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          seats: selectedSeats,
+          amount: totalAmount,
+          stripeUrl: session.url,
+          expiresAt: Date.now() + 10 * 60 * 1000
+        };
+
+        return {
+          success: true,
+          message: `Seats ${selectedSeats.join(', ')} have been reserved for you for 10 minutes! Total is $${totalAmount}. Please click below to complete your payment on Stripe.`,
+          booking: bookingCardData
         };
       }
 
