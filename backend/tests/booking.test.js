@@ -2,6 +2,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import app from '../server.js';
+import mongoose from 'mongoose';
 import Show from '../models/showModel.js';
 
 dotenv.config();
@@ -21,8 +22,16 @@ describe('3. Booking & Concurrency Protection Endpoints', () => {
       { expiresIn: '1h' }
     );
 
-    const show = await Show.findOne().lean();
-    testShowId = show?._id ? show._id.toString() : '68664b3d262e9a5920405712';
+    let show = await Show.findOne();
+    if (!show) {
+      show = await Show.create({
+        movie: new mongoose.Types.ObjectId(),
+        showDateTime: new Date(Date.now() + 86400000),
+        showPrice: 15,
+        occupiedSeats: {}
+      });
+    }
+    testShowId = show._id.toString();
   });
 
   it('POST /api/booking/create should reject requests without Authorization token with 401', async () => {

@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupApiMocks } from './fixtures.js';
 
 test.describe('3. Critical Path: Seat Layout Grid & Checkout Gateway', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
   const sampleMovieId = '6a84aac556a59e06b3c7ed16';
   const sampleDate = '2026-09-09';
   const targetShowUrl = `/movies/${sampleMovieId}/${sampleDate}`;

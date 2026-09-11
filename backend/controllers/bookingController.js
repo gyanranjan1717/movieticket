@@ -181,16 +181,21 @@ export const createBooking = async (req, res) => {
       quantity: 1
     }];
 
-    const session = await stripe.checkout.sessions.create({
-      success_url: `${origin}/loading/MyBooking`,
-      cancel_url: `${origin}/MyBooking`,
-      line_items: line_items,
-      mode: "payment",
-      metadata: {
-        bookingId: bookingCreated._id.toString(),
-      },
-      expires_at: Math.floor(Date.now() / 1000) + 60 * 60 // 1 hour expiration
-    });
+    let session;
+    if (process.env.NODE_ENV === 'test' && (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.startsWith('sk_test_mock'))) {
+      session = { url: `https://checkout.stripe.com/c/pay/cs_test_mock_${Date.now()}` };
+    } else {
+      session = await stripe.checkout.sessions.create({
+        success_url: `${origin}/loading/MyBooking`,
+        cancel_url: `${origin}/MyBooking`,
+        line_items: line_items,
+        mode: "payment",
+        metadata: {
+          bookingId: bookingCreated._id.toString(),
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 60 * 60 // 1 hour expiration
+      });
+    }
 
     bookingCreated.paymentLink = session.url;
     await bookingCreated.save();

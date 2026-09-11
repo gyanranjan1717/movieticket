@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { setupApiMocks } from './fixtures.js';
 
 test.describe('1. Home Page & Catalog Exploration', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
   test('should load the home page with branding, navbar links and location badge', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 

@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { setupApiMocks } from './fixtures.js';
 
 test.describe('2. Movie Details & Showtime Selection', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
   test('should open movie details page, display synopsis, badges and date options', async ({ page }) => {
     // 1. Start from Home and click on a movie card or Buy Tickets button
     await page.goto('/', { waitUntil: 'domcontentloaded' });
