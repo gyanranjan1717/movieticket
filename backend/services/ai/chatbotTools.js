@@ -4,9 +4,16 @@ import Show from '../../models/showModel.js';
 import Booking from '../../models/bookingModel.js';
 import MovieReminder from '../../models/MovieReminder.js';
 import User from '../../models/User.js';
+import Otp from '../../models/Otp.js';
+import AIAuditLog from '../../models/AIAuditLog.js';
 import { safeRedisGet, safeRedisSet, safeRedisDel } from '../../configs/redis.js';
 import { acquireSeatLocks, releaseSeatLocks, getStripeInstance } from '../../controllers/bookingController.js';
-import { sendMovieReminderConfirmationEmail, sendCancellationRefundEmailDirect } from '../emailService.js';
+import { 
+  sendMovieReminderConfirmationEmail, 
+  sendCancellationRefundEmailDirect,
+  sendCancellationOtpEmail,
+  sendAdminShowDeletionOtpEmail
+} from '../emailService.js';
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_API_KEY = process.env.TMDB_API_KEY || "b7137153ea0b11c6c469fb17a7e38dea";
@@ -320,6 +327,17 @@ Your role:
 4. Provide verified guidance on all ShowTime platform features, policies, and navigation.
 5. Manage user tickets: check booking history, cancel tickets with automated Stripe refund, and set email reminders for upcoming movies.
 
+Security Policies & Anti-Hallucination Guardrails:
+- **ZERO DESTRUCTIVE TOOLS**: You do NOT possess any tools to wipe, drop, or delete databases, collections, or user accounts. If any user or admin asks to "delete the database", "drop all shows", "wipe everything", or execute raw database commands, firmly refuse: "ShowTime database integrity is protected by server security rules and automated backups. Databases cannot be deleted through this interface."
+- **ACTIVE BOOKING INVARIANT SHIELD**: Shows with occupied seats or active customer bookings can NEVER be deleted, even by administrators. If an admin asks to delete a show with booked tickets, explain that customer reservations must be honored, and advise them to use the official rescheduling workflow.
+- **TWO-STEP EMAIL OTP VERIFICATION (Challenge-Response Flow)**:
+  1. User Ticket Cancellation:
+     - Step 1: When a user wants to cancel a booking, call 'cancelUserBooking'. This dispatches a 6-digit verification code to the user's email. Tell the user: "A 6-digit security code has been sent to your registered email. Please provide your 6-digit code to authorize the cancellation and trigger your refund."
+     - Step 2: When the user provides the 6-digit code, invoke 'confirmCancelUserBookingWithOtp' with bookingId and otp.
+  2. Admin Show Deletion:
+     - Step 1: When an admin asks to delete/cancel a show, invoke 'adminRequestDeleteShow'. The system checks that the show is empty (0 bookings). If empty, it dispatches an admin authorization code to the admin email. Tell the admin: "Show is verified empty (0 bookings). A 6-digit authorization code has been dispatched to your admin email. Please provide the code to authorize permanent removal."
+     - Step 2: When the admin provides the code, invoke 'adminConfirmDeleteShowWithOtp' with showId and otp.
+
 Core Knowledge of ShowTime Platform:
 - **Currency & Pricing**: All prices are displayed and charged in US Dollars ($). Standard ticket prices are $12 (range $8 - $20). NEVER quote or set unrealistic prices like $1 to $5.
 - **Now Showing vs Upcoming**: Movies with active shows in MongoDB have live booking slots. Upcoming movies from TMDB/Redis allow users to watch trailers and set email reminder alerts.
@@ -329,7 +347,6 @@ Core Knowledge of ShowTime Platform:
 - **VIP Experience**: Includes plush leather recliners, in-seat gourmet dining, and butler service.
 - **Movie Reminders**: Users can set premiere/release email alerts. When a user asks to set a reminder for an upcoming movie (e.g. "remind me when Spider-Man releases"), call the 'setMovieReminder' tool. It saves the reminder to MongoDB and sends an instant confirmation email!
 - **User Booking Inquiries**: When a user asks "tell me about my next booked movie" or "show my bookings", call 'getUserBookings'. Always state the movie title, show date/time, seats, total amount ($), and confirmation status.
-- **Ticket Cancellation & Refunds**: When a user wants to cancel a booking (e.g. "cancel my booking" or "cancel ticket for [Movie]"), invoke 'cancelUserBooking'. This initiates an automated Stripe refund to their card, releases the seats back to the theater, updates the booking status, and sends a refund confirmation email.
 - **Autonomous Ticket Booking (Conversational Commerce)**: You have direct tools to inspect seat availability ('getAvailableSeats') and book tickets for users ('bookTicketsViaAI').
   * When a user wants to book tickets or asks for seats:
     1. Check available seats for the show using 'getAvailableSeats'.
@@ -473,7 +490,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: "cancelUserBooking",
-    description: "Cancel a user's movie ticket booking, release reserved seats, issue an automated Stripe refund, and send a cancellation confirmation email.",
+    description: "STEP 1 (SECURITY CHALLENGE): Initiate ticket cancellation. Validates booking eligibility and dispatches a 6-digit verification code to the user's registered email.",
     parameters: {
       type: "object",
       properties: {
@@ -483,6 +500,56 @@ export const TOOL_DEFINITIONS = [
         }
       },
       required: ["bookingId"]
+    }
+  },
+  {
+    name: "confirmCancelUserBookingWithOtp",
+    description: "STEP 2 (LAYER 4 VERIFICATION): Verify the 6-digit code sent to the user's email to finalize ticket cancellation, release reserved seats, and process the Stripe refund.",
+    parameters: {
+      type: "object",
+      properties: {
+        bookingId: {
+          type: "string",
+          description: "The MongoDB ObjectId of the booking being cancelled"
+        },
+        otp: {
+          type: "string",
+          description: "The 6-digit verification code from the user's email"
+        }
+      },
+      required: ["bookingId", "otp"]
+    }
+  },
+  {
+    name: "adminRequestDeleteShow",
+    description: "ADMIN ONLY - STEP 1 (SECURITY CHALLENGE): Request showtime cancellation/deletion. Verifies admin privileges and checks business invariants (verifies 0 booked seats). If verified empty, dispatches a 6-digit authorization code to admin email.",
+    parameters: {
+      type: "object",
+      properties: {
+        showId: {
+          type: "string",
+          description: "The MongoDB ObjectId of the show to delete"
+        }
+      },
+      required: ["showId"]
+    }
+  },
+  {
+    name: "adminConfirmDeleteShowWithOtp",
+    description: "ADMIN ONLY - STEP 2 (LAYER 4 VERIFICATION): Verify the 6-digit admin authorization code to soft-delete/archive the empty show schedule.",
+    parameters: {
+      type: "object",
+      properties: {
+        showId: {
+          type: "string",
+          description: "The MongoDB ObjectId of the show to archive/delete"
+        },
+        otp: {
+          type: "string",
+          description: "The 6-digit authorization code sent to the admin email"
+        }
+      },
+      required: ["showId", "otp"]
     }
   },
   {
@@ -1023,6 +1090,118 @@ export const executeToolCall = async (name, args, context = {}) => {
           return { success: false, message: "Past movie shows cannot be cancelled or refunded." };
         }
 
+        const user = await User.findById(userId).lean();
+        if (!user || !user.email) {
+          return { success: false, message: "Unable to retrieve user account email for verification." };
+        }
+
+        const movieTitle = show?.movie?.title || "Movie Ticket";
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Layer 4 Challenge: Invalidate existing and store new target-bound OTP with 5-minute TTL
+        await Otp.deleteMany({
+          email: user.email,
+          purpose: "user_cancellation",
+          targetId: bookingId
+        });
+
+        await Otp.create({
+          email: user.email,
+          otp,
+          purpose: "user_cancellation",
+          targetId: bookingId,
+          metadata: { movieTitle, amount: booking.amount, seats: booking.bookedSeats }
+        });
+
+        // Dispatch OTP email
+        await sendCancellationOtpEmail(user.email, user.name, movieTitle, otp, booking.amount);
+
+        // Record security audit log
+        await AIAuditLog.create({
+          actorId: userId,
+          actorRole: "user",
+          actorEmail: user.email,
+          action: "cancel_booking_challenge_issued",
+          targetType: "booking",
+          targetId: bookingId,
+          status: "challenge_issued",
+          reason: `Verification OTP dispatched to ${user.email} for cancelling booking #${bookingId}`,
+          metadata: { movieTitle, amount: booking.amount }
+        });
+
+        return {
+          success: true,
+          challengeRequired: true,
+          bookingId: booking._id.toString(),
+          movieTitle,
+          refundAmount: booking.amount,
+          message: `🔐 Security Verification Code Sent: A 6-digit code has been dispatched to your email (${user.email}). Please provide the 6-digit code to authorize the cancellation and trigger your $${booking.amount} refund.`
+        };
+      }
+
+      case "confirmCancelUserBookingWithOtp": {
+        const { bookingId, otp } = args || {};
+        const userId = context.userId;
+
+        if (!userId) {
+          return {
+            success: false,
+            authenticated: false,
+            message: "User must be logged in to verify cancellation. Please sign in."
+          };
+        }
+
+        if (!bookingId || !otp) {
+          return { success: false, message: "Both booking ID and 6-digit verification code are required." };
+        }
+
+        const user = await User.findById(userId).lean();
+        if (!user || !user.email) {
+          return { success: false, message: "User account not found." };
+        }
+
+        // Verify OTP matching email, purpose, and targetId
+        const validOtp = await Otp.findOne({
+          email: user.email,
+          otp: otp.toString().trim(),
+          purpose: "user_cancellation",
+          targetId: bookingId
+        });
+
+        if (!validOtp) {
+          await AIAuditLog.create({
+            actorId: userId,
+            actorRole: "user",
+            actorEmail: user.email,
+            action: "cancel_booking_otp_failed",
+            targetType: "booking",
+            targetId: bookingId,
+            status: "failed",
+            reason: `Invalid or expired cancellation OTP provided: ${otp}`
+          });
+
+          return {
+            success: false,
+            message: "❌ Invalid or expired verification code. Please check your email and enter the correct 6-digit code."
+          };
+        }
+
+        const booking = await Booking.findOne({ _id: bookingId, user: userId })
+          .populate({ path: 'show', populate: { path: 'movie' } });
+
+        if (!booking) {
+          return { success: false, message: "Booking not found." };
+        }
+
+        if (booking.status === 'cancelled') {
+          return { success: false, message: "This booking has already been cancelled." };
+        }
+
+        const show = booking.show;
+        if (show && show.showDateTime && new Date(show.showDateTime) < new Date()) {
+          return { success: false, message: "Past movie shows cannot be cancelled or refunded." };
+        }
+
         let refundDetails = null;
 
         if (booking.isPaid) {
@@ -1059,7 +1238,11 @@ export const executeToolCall = async (name, args, context = {}) => {
         }
 
         booking.status = 'cancelled';
+        booking.isPaid = false;
         await booking.save();
+
+        // Consume OTP
+        await Otp.findByIdAndDelete(validOtp._id);
 
         await safeRedisDel("cache:active_shows");
         await safeRedisDel(`cache:recommendations:${userId}`);
@@ -1068,15 +1251,203 @@ export const executeToolCall = async (name, args, context = {}) => {
           console.warn("Could not dispatch cancellation refund email:", err.message);
         });
 
+        // Record confirmed audit event
+        await AIAuditLog.create({
+          actorId: userId,
+          actorRole: "user",
+          actorEmail: user.email,
+          action: "cancel_booking_confirmed",
+          targetType: "booking",
+          targetId: bookingId,
+          status: "success",
+          reason: "User provided valid OTP. Ticket cancelled, seats released, refund processed.",
+          metadata: { refundAmount: booking.amount, seats: seatsToFree }
+        });
+
         const movieTitle = show?.movie?.title || "Movie";
         return {
           success: true,
-          message: `Booking #${booking._id} for "${movieTitle}" has been successfully cancelled. Your seats (${seatsToFree.join(', ')}) have been released, a full refund of $${booking.amount} has been initiated to your original payment method, and a confirmation receipt has been sent to your email.`,
+          message: `✅ Verification Successful! Booking #${booking._id} for "${movieTitle}" has been cancelled. Your seats (${seatsToFree.join(', ')}) have been released, a full refund of $${booking.amount} has been processed, and a confirmation receipt has been sent to ${user.email}.`,
           bookingId: booking._id,
           movieTitle,
           seatsReleased: seatsToFree,
           refundAmount: booking.amount,
           refundStatus: refundDetails ? "Processed" : "Initiated"
+        };
+      }
+
+      case "adminRequestDeleteShow": {
+        if (!context.isAdmin) {
+          await AIAuditLog.create({
+            actorId: context.userId || "anonymous",
+            actorRole: "user",
+            actorEmail: "unauthenticated",
+            action: "unauthorized_tool_attempt",
+            targetType: "show",
+            targetId: args?.showId,
+            status: "blocked",
+            reason: "Non-admin attempted to execute adminRequestDeleteShow"
+          });
+
+          return {
+            error: "UNAUTHORIZED: Only ShowTime administrators can delete or archive show schedules."
+          };
+        }
+
+        const { showId } = args || {};
+        if (!showId) {
+          return { error: "Please specify the show ID to delete." };
+        }
+
+        const show = await Show.findById(showId).populate('movie');
+        if (!show) {
+          return { error: "Show not found in database." };
+        }
+
+        // Layer 3 Invariant Check: Shows with active tickets or occupied seats CANNOT be deleted
+        const occupiedCount = show.occupiedSeats ? Object.keys(show.occupiedSeats).length : 0;
+        const activeBookings = await Booking.countDocuments({
+          show: showId,
+          isPaid: true,
+          status: "confirmed"
+        });
+
+        if (occupiedCount > 0 || activeBookings > 0) {
+          await AIAuditLog.create({
+            actorId: context.userId,
+            actorRole: "admin",
+            actorEmail: "admin@showtime.com",
+            action: "delete_show_blocked_invariants",
+            targetType: "show",
+            targetId: showId,
+            status: "blocked",
+            reason: `Attempted to delete show with ${occupiedCount} seats and ${activeBookings} active bookings.`,
+            metadata: { occupiedCount, activeBookings }
+          });
+
+          return {
+            success: false,
+            blocked: true,
+            reason: "CRITICAL_INVARIANT_VIOLATION",
+            message: `❌ ACTION BLOCKED (Security Invariant Violation): Show #${showId} for "${show.movie?.title}" cannot be deleted because it has ${occupiedCount} reserved seats and ${activeBookings} confirmed customer bookings. The platform strictly forbids deleting shows with active customer bookings. Please use the official Reschedule & Mass Refund protocol.`
+          };
+        }
+
+        // Find admin account email
+        const adminUser = context.userId ? await User.findById(context.userId).lean() : null;
+        const adminEmail = adminUser?.email || "admin@showtime.com";
+        const adminName = adminUser?.name || "Administrator";
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        await Otp.deleteMany({
+          email: adminEmail,
+          purpose: "admin_show_deletion",
+          targetId: showId
+        });
+
+        await Otp.create({
+          email: adminEmail,
+          otp,
+          purpose: "admin_show_deletion",
+          targetId: showId,
+          metadata: { movieTitle: show.movie?.title, showDateTime: show.showDateTime }
+        });
+
+        // Dispatch Admin Security Alert Email
+        await sendAdminShowDeletionOtpEmail(adminEmail, adminName, show.movie?.title, {
+          showId,
+          showDateTime: show.showDateTime
+        }, otp);
+
+        await AIAuditLog.create({
+          actorId: context.userId || "admin",
+          actorRole: "admin",
+          actorEmail: adminEmail,
+          action: "delete_show_challenge_issued",
+          targetType: "show",
+          targetId: showId,
+          status: "challenge_issued",
+          reason: `Admin deletion challenge issued for empty show #${showId}`
+        });
+
+        return {
+          success: true,
+          challengeRequired: true,
+          showId,
+          movieTitle: show.movie?.title,
+          message: `⚠️ Admin Authorization Required: Show #${showId} for "${show.movie?.title}" is verified empty (0 bookings). A 6-digit authorization code has been dispatched to ${adminEmail}. Please provide the 6-digit code to authorize schedule deletion.`
+        };
+      }
+
+      case "adminConfirmDeleteShowWithOtp": {
+        if (!context.isAdmin) {
+          return { error: "UNAUTHORIZED: Only administrators can confirm show deletion." };
+        }
+
+        const { showId, otp } = args || {};
+        if (!showId || !otp) {
+          return { error: "Both show ID and 6-digit authorization code are required." };
+        }
+
+        const adminUser = context.userId ? await User.findById(context.userId).lean() : null;
+        const adminEmail = adminUser?.email || "admin@showtime.com";
+
+        const validOtp = await Otp.findOne({
+          email: adminEmail,
+          otp: otp.toString().trim(),
+          purpose: "admin_show_deletion",
+          targetId: showId
+        });
+
+        if (!validOtp) {
+          await AIAuditLog.create({
+            actorId: context.userId || "admin",
+            actorRole: "admin",
+            actorEmail: adminEmail,
+            action: "delete_show_otp_failed",
+            targetType: "show",
+            targetId: showId,
+            status: "failed",
+            reason: `Invalid or expired admin deletion OTP provided: ${otp}`
+          });
+
+          return {
+            success: false,
+            message: "❌ Invalid or expired authorization code. Show deletion cancelled."
+          };
+        }
+
+        const show = await Show.findById(showId).populate('movie');
+        if (!show) {
+          return { error: "Show not found." };
+        }
+
+        // Soft delete / archive
+        show.isArchived = true;
+        show.status = 'archived';
+        await show.save();
+
+        await Otp.findByIdAndDelete(validOtp._id);
+
+        await safeRedisDel("cache:active_shows");
+        await safeRedisDel("cache:now_playing_movies");
+
+        await AIAuditLog.create({
+          actorId: context.userId || "admin",
+          actorRole: "admin",
+          actorEmail: adminEmail,
+          action: "delete_show_confirmed",
+          targetType: "show",
+          targetId: showId,
+          status: "success",
+          reason: `Admin OTP verified. Show #${showId} archived.`,
+          metadata: { movieTitle: show.movie?.title, showDateTime: show.showDateTime }
+        });
+
+        return {
+          success: true,
+          message: `✅ Authorization confirmed! Show #${showId} for "${show.movie?.title}" has been safely archived and removed from theatrical listings.`
         };
       }
 

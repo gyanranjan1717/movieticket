@@ -267,7 +267,10 @@ export const getShows = async (req, res) => {
       return res.status(200).json({ success: true, shows: JSON.parse(cachedShows), cached: true });
     }
 
-    const shows = await Show.find({ showDateTime: { $gte: new Date() } })
+    const shows = await Show.find({ 
+      showDateTime: { $gte: new Date() },
+      isArchived: { $ne: true }
+    })
       .populate("movie")
       .sort({ showDateTime: 1 })
       .lean();
@@ -415,7 +418,11 @@ export const getShow = async (req, res) => {
       /^[0-9a-fA-F]{24}$/.test(movie._id.toString());
 
     const shows = isMongoObjectId
-      ? await Show.find({ movie: movie._id, showDateTime: { $gte: startOfToday } }).sort({ showDateTime: 1 }).lean()
+      ? await Show.find({ 
+          movie: movie._id, 
+          showDateTime: { $gte: startOfToday },
+          isArchived: { $ne: true }
+        }).sort({ showDateTime: 1 }).lean()
       : [];
 
     const dateTime = {};

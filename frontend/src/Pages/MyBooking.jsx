@@ -6,7 +6,7 @@ import { dateFormate } from '../Lib/dateFormate';
 import { useAppContext } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { Ticket, Film, LogIn, ArrowRight, CheckCircle2, AlertCircle, RotateCcw, XCircle } from 'lucide-react';
+import { Ticket, Film, LogIn, ArrowRight, CheckCircle2, AlertCircle, RotateCcw, XCircle, ShieldCheck, Lock, X } from 'lucide-react';
 
 const MyBooking = () => {
   const currency = import.meta.env.VITE_CURRENCY || '$';
@@ -15,33 +15,66 @@ const MyBooking = () => {
   const [booking, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState(null);
+  const [otpModalBooking, setOtpModalBooking] = useState(null);
+  const [otpInput, setOtpInput] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-  const handleCancelBooking = async (bookingId, movieTitle) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to cancel your booking for "${movieTitle}"?\n\nYour seats will be released and a full refund will be processed back to your original payment method.`
-    );
-    if (!confirmed) return;
-
+  const handleInitiateCancel = async (bookingId, movieTitle, amount) => {
     setCancellingId(bookingId);
     try {
       const activeToken = token || localStorage.getItem("token");
-      const { data } = await axios.post(`/api/booking/cancel/${bookingId}`, {}, {
-        headers: {
-          Authorization: `Bearer ${activeToken}`,
-        },
+      const { data } = await axios.post(`/api/booking/request-cancel-otp/${bookingId}`, {}, {
+        headers: { Authorization: `Bearer ${activeToken}` },
       });
 
       if (data.success) {
-        toast.success(data.message || "Booking cancelled and refund processed!");
-        await getMybooking();
+        setOtpModalBooking({
+          bookingId,
+          movieTitle,
+          amount,
+          emailMasked: data.emailMasked
+        });
+        setOtpInput('');
+        toast.success(data.message || "Verification code sent to your email!");
       } else {
-        toast.error(data.message || "Failed to cancel booking");
+        toast.error(data.message || "Failed to initiate cancellation");
       }
     } catch (error) {
-      console.error("Error cancelling booking:", error);
-      toast.error(error.response?.data?.message || "Could not cancel booking");
+      console.error("Error requesting cancellation OTP:", error);
+      toast.error(error.response?.data?.message || "Could not request verification code");
     } finally {
       setCancellingId(null);
+    }
+  };
+
+  const handleVerifyCancelOtp = async (e) => {
+    if (e) e.preventDefault();
+    if (!otpInput.trim() || otpInput.trim().length < 6) {
+      return toast.error("Please enter the complete 6-digit verification code");
+    }
+
+    setIsVerifyingOtp(true);
+    try {
+      const activeToken = token || localStorage.getItem("token");
+      const { data } = await axios.post('/api/booking/confirm-cancel-otp', {
+        bookingId: otpModalBooking.bookingId,
+        otp: otpInput.trim()
+      }, {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+
+      if (data.success) {
+        toast.success(data.message || "Ticket successfully cancelled & refunded!");
+        setOtpModalBooking(null);
+        await getMybooking();
+      } else {
+        toast.error(data.message || "Verification failed");
+      }
+    } catch (error) {
+      console.error("Error confirming cancellation with OTP:", error);
+      toast.error(error.response?.data?.message || "Invalid or expired verification code");
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -221,12 +254,12 @@ const MyBooking = () => {
                         </span>
                         {new Date(showDateTime) > new Date() && (
                           <button
-                            onClick={() => handleCancelBooking(item._id, movie.title)}
+                            onClick={() => handleInitiateCancel(item._id, movie.title, item.amount)}
                             disabled={cancellingId === item._id}
                             className="text-xs text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
                           >
                             <RotateCcw className="w-3 h-3" />
-                            {cancellingId === item._id ? "Processing Refund..." : "Cancel & Refund"}
+                            {cancellingId === item._id ? "Sending Code..." : "Cancel & Refund"}
                           </button>
                         )}
                       </>
@@ -249,6 +282,80 @@ const MyBooking = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Layer 4: Two-Step Email OTP Verification Modal */}
+      {otpModalBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-gray-900 border border-gray-700/80 rounded-3xl max-w-md w-full p-6 text-white shadow-2xl relative">
+            <button
+              onClick={() => setOtpModalBooking(null)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-14 h-14 bg-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-rose-500/30">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-xl font-bold text-center mb-1">Security Verification</h3>
+            <p className="text-gray-400 text-xs text-center mb-5">
+              To protect your tickets, we dispatched a 6-digit security code to your registered email {otpModalBooking.emailMasked ? `(${otpModalBooking.emailMasked})` : ""}.
+            </p>
+
+            <div className="bg-gray-800/60 border border-gray-700/60 rounded-xl p-3.5 mb-5 text-xs text-gray-300">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-400">Movie:</span>
+                <span className="font-semibold text-white">{otpModalBooking.movieTitle}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Refund Amount:</span>
+                <span className="font-bold text-emerald-400">{currency}{otpModalBooking.amount}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleVerifyCancelOtp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 text-center">
+                  Enter 6-Digit Verification Code
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    autoFocus
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="• • • • • •"
+                    className="w-full bg-gray-950 border border-gray-700 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/30 rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-amber-400 placeholder:text-gray-600 outline-none transition"
+                  />
+                  <Lock className="w-4 h-4 text-gray-500 absolute left-4 top-1/2 -translate-y-1/2" />
+                </div>
+                <p className="text-[11px] text-gray-500 text-center mt-2">
+                  ⏰ Code expires in 5 minutes. Check your inbox and spam folder.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOtpModalBooking(null)}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium py-3 rounded-xl transition cursor-pointer"
+                >
+                  Keep Ticket
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingOtp || otpInput.length < 6}
+                  className="flex-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isVerifyingOtp ? "Verifying..." : "Confirm & Refund"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

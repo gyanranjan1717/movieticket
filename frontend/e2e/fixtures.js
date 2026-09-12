@@ -93,6 +93,24 @@ export async function setupApiMocks(page) {
     });
   });
 
+  // Mock user bookings
+  await page.route('**/api/user/bookings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, bookings: [] })
+    });
+  });
+
+  // Mock user reminders
+  await page.route('**/api/user/reminders', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, reminders: [] })
+    });
+  });
+
   // Mock chatbot config
   await page.route('**/api/chatbot/config', async (route) => {
     await route.fulfill({
