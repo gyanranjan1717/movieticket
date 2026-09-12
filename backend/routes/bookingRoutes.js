@@ -1,5 +1,12 @@
 import express from "express";
-import { createBooking, getOccupiedSeats, getBookingStatus, cancelBooking } from "../controllers/bookingController.js";
+import { 
+  createBooking, 
+  getOccupiedSeats, 
+  getBookingStatus, 
+  cancelBooking,
+  requestCancellationOtp,
+  confirmCancellationWithOtp
+} from "../controllers/bookingController.js";
 import { protectUser } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { createBookingSchema } from "../schemas/validationSchemas.js";
@@ -93,5 +100,27 @@ bookingRouter.get('/status/:bookingId', getBookingStatus);
  *         description: Booking cancelled and refund processed
  */
 bookingRouter.post('/cancel/:bookingId', protectUser, cancelBooking);
+
+/**
+ * @openapi
+ * /api/booking/request-cancel-otp/{bookingId}:
+ *   post:
+ *     summary: Request 6-digit OTP to verify ticket cancellation
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ */
+bookingRouter.post('/request-cancel-otp/:bookingId', protectUser, requestCancellationOtp);
+
+/**
+ * @openapi
+ * /api/booking/confirm-cancel-otp:
+ *   post:
+ *     summary: Verify 6-digit OTP and atomically execute cancellation & refund
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ */
+bookingRouter.post('/confirm-cancel-otp', protectUser, confirmCancellationWithOtp);
 
 export default bookingRouter;

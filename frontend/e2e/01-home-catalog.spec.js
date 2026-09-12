@@ -30,7 +30,7 @@ test.describe('1. Home Page & Catalog Exploration', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // 1. Check AI ChatBot Widget trigger
-    const chatbotTrigger = page.locator('button[aria-label="Open AI Cinema Concierge"], button[title*="AI"], button:has-text("AI")').first();
+    const chatbotTrigger = page.locator('button[aria-label="Open AI Cinema Concierge"]').first();
     await expect(chatbotTrigger).toBeVisible({ timeout: 15000 });
 
     // 2. Check VIP Feature Section Heading

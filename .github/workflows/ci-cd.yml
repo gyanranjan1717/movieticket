@@ -141,25 +141,67 @@ jobs:
       - name: Run Playwright E2E Tests Headlessly
         working-directory: frontend
         run: npm run test:e2e
+        env:
+          CI: true
 
-      - name: Archive Playwright Test Report (On Failure)
+      - name: Archive Playwright Visual Test Report
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: playwright-failure-report
+          name: playwright-visual-report
           path: frontend/playwright-report/
           retention-days: 14
 
 
   # ----------------------------------------------------------------------------
-  # JOB 4: Automated Continuous Deployment (CD)
-  # Triggered ONLY when all test tiers pass AND on the 'main' production branch
+  # JOB 4: Automated Continuous Promotion from 'dev' to 'main'
+  # Triggers when code is pushed to 'dev' AND all test tiers pass with 100% success
+  # ----------------------------------------------------------------------------
+  auto-promote-dev-to-main:
+    name: 🔀 Auto-Promote dev to main
+    runs-on: ubuntu-latest
+    needs: [code-quality-and-build, backend-integration-tests, frontend-browser-e2e]
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push' && success()
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository with Full Git History
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git Identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync, Merge dev into main, and Push
+        run: |
+          echo "🔄 Fetching all remote branches..."
+          git fetch origin main:main
+          git checkout main
+          echo "🔀 Merging verified dev branch into main..."
+          git merge origin/dev --ff-only || git merge origin/dev -m "chore(ci): auto-merge verified dev into main after all tests passed"
+          echo "🚀 Pushing updated main branch to origin..."
+          git push origin main
+
+
+  # ----------------------------------------------------------------------------
+  # JOB 5: Automated Continuous Deployment (CD)
+  # Triggered when all test tiers pass on 'main' OR immediately after auto-promote
   # ----------------------------------------------------------------------------
   deploy-production:
     name: 🚀 Tier-1 Continuous Deployment (Render & Vercel)
     runs-on: ubuntu-latest
-    needs: [code-quality-and-build, backend-integration-tests, frontend-browser-e2e]
-    if: github.ref == 'refs/heads/main' && success()
+    needs: [code-quality-and-build, backend-integration-tests, frontend-browser-e2e, auto-promote-dev-to-main]
+    if: |
+      always() &&
+      (github.ref == 'refs/heads/main' || needs.auto-promote-dev-to-main.result == 'success') &&
+      needs.code-quality-and-build.result == 'success' &&
+      needs.backend-integration-tests.result == 'success' &&
+      needs.frontend-browser-e2e.result == 'success'
 
     steps:
       - name: Trigger Render Backend Deployment

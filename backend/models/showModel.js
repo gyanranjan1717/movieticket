@@ -6,13 +6,15 @@ const showSchema = new mongoose.Schema(
     showDateTime: { type: Date, required: true },
     showPrice: { type: Number, required: true },
     occupiedSeats: { type: Object, default: {} }, 
+    isArchived: { type: Boolean, default: false },
+    status: { type: String, enum: ['active', 'cancelled', 'archived'], default: 'active' },
   },
   { minimize: false }
 );
 
 // Indexes for fast lookup of upcoming shows and movie-specific shows
 showSchema.index({ movie: 1, showDateTime: 1 });
-showSchema.index({ showDateTime: 1 });
+showSchema.index({ showDateTime: 1, isArchived: 1 });
 
 const Show = mongoose.model("Show", showSchema);
 

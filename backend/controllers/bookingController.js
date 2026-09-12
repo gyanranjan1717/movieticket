@@ -1,9 +1,16 @@
 import Booking from "../models/bookingModel.js";
 import Show from "../models/showModel.js";
+import Otp from "../models/Otp.js";
+import AIAuditLog from "../models/AIAuditLog.js";
+import User from "../models/User.js";
 import stripe from "stripe";
 import { inngest } from "../inngest/index.js";
 import redis, { safeRedisDel, safeRedisSet } from "../configs/redis.js";
-import { sendBookingConfirmationEmailDirect, sendCancellationRefundEmailDirect } from "../services/emailService.js";
+import { 
+  sendBookingConfirmationEmailDirect, 
+  sendCancellationRefundEmailDirect,
+  sendCancellationOtpEmail 
+} from "../services/emailService.js";
 
 let stripeInstance = null;
 export const getStripeInstance = () => {
@@ -457,6 +464,248 @@ export const cancelBooking = async (req, res) => {
   } catch (error) {
     console.error("Error cancelling booking:", error);
     return res.status(500).json({ success: false, message: "Failed to cancel booking" });
+  }
+};
+
+/**
+ * STEP 1 (LAYER 4): REQUEST 6-DIGIT OTP TO CANCEL TICKET
+ */
+export const requestCancellationOtp = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: "Booking ID is required" });
+    }
+
+    const booking = await Booking.findById(bookingId).populate({
+      path: "show",
+      populate: { path: "movie" }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.user.toString() !== userId?.toString() && req.user?.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Unauthorized to access this booking" });
+    }
+
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ success: false, message: "This booking has already been cancelled." });
+    }
+
+    if (booking.show?.showDateTime && new Date(booking.show.showDateTime) < new Date()) {
+      return res.status(400).json({ success: false, message: "Cannot cancel ticket for a screening that has already ended." });
+    }
+
+    const user = await User.findById(userId).lean();
+    if (!user || !user.email) {
+      return res.status(400).json({ success: false, message: "User account email not found" });
+    }
+
+    const movieTitle = booking.show?.movie?.title || "Movie Ticket";
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Invalidate any previous OTP for this booking cancellation
+    await Otp.deleteMany({
+      email: user.email,
+      purpose: "user_cancellation",
+      targetId: bookingId
+    });
+
+    // Store new OTP bound to this specific booking with 5-minute TTL
+    await Otp.create({
+      email: user.email,
+      otp,
+      purpose: "user_cancellation",
+      targetId: bookingId,
+      metadata: {
+        movieTitle,
+        amount: booking.amount,
+        seats: booking.bookedSeats
+      }
+    });
+
+    // Send high-security verification email
+    await sendCancellationOtpEmail(user.email, user.name, movieTitle, otp, booking.amount);
+
+    // Record challenge issued in audit log
+    await AIAuditLog.create({
+      actorId: userId,
+      actorRole: req.user?.role || "user",
+      actorEmail: user.email,
+      action: "cancel_booking_challenge_issued",
+      targetType: "booking",
+      targetId: bookingId,
+      status: "challenge_issued",
+      reason: `Verification OTP dispatched to ${user.email} for cancelling booking #${bookingId}`,
+      metadata: { movieTitle, amount: booking.amount }
+    });
+
+    return res.status(200).json({
+      success: true,
+      challengeRequired: true,
+      bookingId,
+      message: `A 6-digit security code has been sent to ${user.email}. Enter the code to authorize your refund.`,
+      emailMasked: user.email.replace(/(.{2})(.*)(?=@)/, (_, a, b) => a + "*".repeat(b.length))
+    });
+  } catch (error) {
+    console.error("Error requesting cancellation OTP:", error);
+    return res.status(500).json({ success: false, message: "Failed to issue cancellation verification code" });
+  }
+};
+
+/**
+ * STEP 2 (LAYER 4): VERIFY OTP & ATOMICALLY EXECUTE CANCELLATION & REFUND
+ */
+export const confirmCancellationWithOtp = async (req, res) => {
+  try {
+    const { bookingId, otp } = req.body;
+    const userId = req.user?.userId;
+
+    if (!bookingId || !otp) {
+      return res.status(400).json({ success: false, message: "Both Booking ID and 6-digit verification code are required" });
+    }
+
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User account not found" });
+    }
+
+    // Verify OTP matching email, purpose, and specific targetId
+    const validOtp = await Otp.findOne({
+      email: user.email,
+      otp: otp.trim(),
+      purpose: "user_cancellation",
+      targetId: bookingId
+    });
+
+    if (!validOtp) {
+      await AIAuditLog.create({
+        actorId: userId,
+        actorRole: req.user?.role || "user",
+        actorEmail: user.email,
+        action: "cancel_booking_otp_failed",
+        targetType: "booking",
+        targetId: bookingId,
+        status: "failed",
+        reason: "Invalid or expired cancellation OTP provided"
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification code. Please check your email or request a new code."
+      });
+    }
+
+    const booking = await Booking.findById(bookingId).populate({
+      path: "show",
+      populate: { path: "movie" }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ success: false, message: "Booking has already been cancelled and refunded." });
+    }
+
+    // Invariant check: screening time
+    if (booking.show?.showDateTime && new Date(booking.show.showDateTime) < new Date()) {
+      return res.status(400).json({ success: false, message: "Cannot cancel ticket for a past screening." });
+    }
+
+    let refundInfo = { amount: booking.amount, refundId: `ref_${Date.now()}` };
+
+    // Process Stripe refund if payment was completed
+    if (booking.isPaid && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const stripe = getStripeInstance();
+        let paymentIntentId = null;
+
+        const sessionMatch = booking.paymentLink?.match(/cs_[a-zA-Z0-9_]+/);
+        if (sessionMatch) {
+          const session = await stripe.checkout.sessions.retrieve(sessionMatch[0]);
+          paymentIntentId = session.payment_intent;
+        } else {
+          const sessions = await stripe.checkout.sessions.list({ limit: 15 });
+          const matchedSession = sessions.data.find(s => s.metadata?.bookingId === bookingId.toString());
+          if (matchedSession) {
+            paymentIntentId = matchedSession.payment_intent;
+          }
+        }
+
+        if (paymentIntentId) {
+          const refund = await stripe.refunds.create({
+            payment_intent: paymentIntentId,
+            reason: "requested_by_customer"
+          });
+          refundInfo.refundId = refund.id;
+          refundInfo.amount = refund.amount ? refund.amount / 100 : booking.amount;
+        }
+      } catch (stripeErr) {
+        console.warn("[CancelBookingOTP] Stripe refund notice:", stripeErr.message);
+      }
+    }
+
+    // Free occupied seats in MongoDB Show document & Redis locks
+    if (booking.show && booking.bookedSeats?.length > 0) {
+      const show = await Show.findById(booking.show._id || booking.show);
+      if (show && show.occupiedSeats) {
+        booking.bookedSeats.forEach(seat => {
+          delete show.occupiedSeats[seat];
+          safeRedisDel(`lock:show:${show._id}:seat:${seat}`);
+        });
+        show.markModified("occupiedSeats");
+        await show.save();
+      }
+    }
+
+    booking.status = "cancelled";
+    booking.isPaid = false;
+    await booking.save();
+
+    // Consume the OTP
+    await Otp.findByIdAndDelete(validOtp._id);
+
+    await safeRedisDel("cache:active_shows");
+    await safeRedisDel("cache:now_playing_movies");
+
+    // Send confirmation receipt email
+    try {
+      await sendCancellationRefundEmailDirect(bookingId, refundInfo);
+    } catch (e) {
+      console.warn("Cancellation email notice:", e.message);
+    }
+
+    // Log confirmed audit event
+    await AIAuditLog.create({
+      actorId: userId,
+      actorRole: req.user?.role || "user",
+      actorEmail: user.email,
+      action: "cancel_booking_confirmed",
+      targetType: "booking",
+      targetId: bookingId,
+      status: "success",
+      reason: "OTP verified successfully. Seats released and refund processed.",
+      metadata: {
+        movieTitle: booking.show?.movie?.title,
+        seats: booking.bookedSeats,
+        refundAmount: refundInfo.amount
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Verification successful! Ticket cancelled and $${refundInfo.amount} refund processed to your account.`,
+      refund: refundInfo
+    });
+  } catch (error) {
+    console.error("Error confirming cancellation with OTP:", error);
+    return res.status(500).json({ success: false, message: "Failed to confirm cancellation" });
   }
 };
 

@@ -207,3 +207,110 @@ export const sendMovieReminderConfirmationEmail = async (userEmail, movieTitle) 
     return false;
   }
 };
+
+/**
+ * Send Two-Step Verification OTP for User Ticket Cancellation & Refund
+ */
+export const sendCancellationOtpEmail = async (userEmail, userName, movieTitle, otp, refundAmount = 0) => {
+  try {
+    console.log(`\n========================================`);
+    console.log(`🔐 [SECURITY CHALLENGE] User Ticket Cancellation OTP`);
+    console.log(`Recipient: ${userEmail} (${userName})`);
+    console.log(`Movie: "${movieTitle}" | Refund Amount: $${refundAmount}`);
+    console.log(`6-Digit OTP: >>> ${otp} <<< (Expires in 5 minutes)`);
+    console.log(`========================================\n`);
+
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 30px 20px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1f2937;">
+        <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #1f2937;">
+          <h1 style="color: #f43f5e; margin: 0; font-size: 28px; font-weight: 800;">ShowTime Security</h1>
+          <p style="color: #9ca3af; font-size: 13px; margin-top: 6px;">Ticket Cancellation & Refund Authorization</p>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <p style="font-size: 15px; color: #e5e7eb; margin: 0;">Hi <strong>${userName || "Movie Lover"}</strong>,</p>
+          <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0; line-height: 1.5;">
+            We received a request to cancel your booking for <strong style="color: #ffffff;">"${movieTitle}"</strong> and process a full refund of <strong style="color: #34d399;">$${refundAmount}</strong>.
+          </p>
+        </div>
+
+        <!-- OTP Highlight Box -->
+        <div style="margin-top: 25px; background: linear-gradient(135deg, #18181b, #09090b); border: 2px dashed #f43f5e; border-radius: 14px; padding: 24px 16px; text-align: center;">
+          <p style="margin: 0; color: #9ca3af; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Your Verification Code</p>
+          <p style="margin: 10px 0; color: #fbbf24; font-family: monospace; font-size: 36px; font-weight: 900; letter-spacing: 8px;">${otp}</p>
+          <p style="margin: 0; color: #ef4444; font-size: 12px; font-weight: 600;">⏰ Valid for 5 minutes. Never share this code with anyone.</p>
+        </div>
+
+        <div style="margin-top: 20px; background-color: #111827; border-radius: 10px; padding: 14px; border: 1px solid #1f2937;">
+          <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.5;">
+            💡 <em>If you requested this cancellation via CineBot or our web platform, enter this 6-digit code to finalize your cancellation and release your seats. If you did not initiate this request, your tickets remain secure and no action is required.</em>
+          </p>
+        </div>
+
+        <div style="margin-top: 25px; text-align: center; border-top: 1px solid #1f2937; padding-top: 16px;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">ShowTime Cinema Security • support@showtime.com</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail(userEmail, `🔐 ShowTime Verification Code: ${otp} (Cancel Ticket)`, htmlBody);
+    return true;
+  } catch (err) {
+    console.error(`[EmailService] Failed to send cancellation OTP email to ${userEmail}:`, err.message);
+    return false;
+  }
+};
+
+/**
+ * Send Two-Step Verification OTP for Admin Show Deletion
+ */
+export const sendAdminShowDeletionOtpEmail = async (adminEmail, adminName, movieTitle, showDetails = {}, otp) => {
+  try {
+    console.log(`\n========================================`);
+    console.log(`🚨 [ADMIN SECURITY ALERT] Show Deletion Authorization OTP`);
+    console.log(`Admin: ${adminEmail} (${adminName})`);
+    console.log(`Show: "${movieTitle}" | Details: ${JSON.stringify(showDetails)}`);
+    console.log(`6-Digit Admin OTP: >>> ${otp} <<< (Expires in 5 minutes)`);
+    console.log(`========================================\n`);
+
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 30px 20px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #ef4444;">
+        <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #1f2937;">
+          <h1 style="color: #ef4444; margin: 0; font-size: 26px; font-weight: 800;">🚨 ShowTime Admin Security Alert</h1>
+          <p style="color: #fca5a5; font-size: 13px; margin-top: 6px;">Theatrical Schedule Deletion Authorization</p>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <p style="font-size: 15px; color: #e5e7eb; margin: 0;">Administrator <strong>${adminName || "Admin"}</strong>,</p>
+          <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0; line-height: 1.5;">
+            An administrative request was submitted to delete the following showtime:
+          </p>
+          <ul style="color: #d1d5db; font-size: 13px; line-height: 1.8; margin-top: 8px;">
+            <li><strong>Movie:</strong> ${movieTitle}</li>
+            <li><strong>Show ID:</strong> #${showDetails.showId || 'N/A'}</li>
+            <li><strong>Showtime:</strong> ${showDetails.showDateTime ? new Date(showDetails.showDateTime).toLocaleString() : 'N/A'}</li>
+            <li><strong>Occupied Seats:</strong> 0 (Verified Empty)</li>
+          </ul>
+        </div>
+
+        <!-- Admin OTP Highlight Box -->
+        <div style="margin-top: 25px; background: linear-gradient(135deg, #1c1917, #0c0a09); border: 2px dashed #f59e0b; border-radius: 14px; padding: 24px 16px; text-align: center;">
+          <p style="margin: 0; color: #f59e0b; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Admin Authorization Code</p>
+          <p style="margin: 10px 0; color: #ffffff; font-family: monospace; font-size: 36px; font-weight: 900; letter-spacing: 8px;">${otp}</p>
+          <p style="margin: 0; color: #ef4444; font-size: 12px; font-weight: 600;">⏰ Code expires in 5 minutes. Authorizes schedule deletion.</p>
+        </div>
+
+        <div style="margin-top: 25px; text-align: center; border-top: 1px solid #1f2937; padding-top: 16px;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">ShowTime Infrastructure Defense System • Unauthorized actions are logged and audited.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail(adminEmail, `🚨 Admin Action Required: Show Deletion Code (${otp})`, htmlBody);
+    return true;
+  } catch (err) {
+    console.error(`[EmailService] Failed to send admin show deletion OTP email to ${adminEmail}:`, err.message);
+    return false;
+  }
+};
+
