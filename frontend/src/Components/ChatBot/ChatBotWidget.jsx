@@ -834,7 +834,7 @@ const ChatBotWidget = () => {
                             </div>
                             <div className="text-right shrink-0">
                               <span className="text-xs font-bold text-emerald-400">
-                                ₹{show.price}
+                                ${show.price}
                               </span>
                               <span className="block text-[10px] text-primary group-hover:translate-x-0.5 transition font-semibold">
                                 Select Seats →

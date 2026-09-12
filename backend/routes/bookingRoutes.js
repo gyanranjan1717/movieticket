@@ -1,5 +1,5 @@
 import express from "express";
-import { createBooking, getOccupiedSeats, getBookingStatus } from "../controllers/bookingController.js";
+import { createBooking, getOccupiedSeats, getBookingStatus, cancelBooking } from "../controllers/bookingController.js";
 import { protectUser } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { createBookingSchema } from "../schemas/validationSchemas.js";
@@ -73,5 +73,25 @@ bookingRouter.get('/seats/:showId', getOccupiedSeats);
  *         description: Current payment and booking status
  */
 bookingRouter.get('/status/:bookingId', getBookingStatus);
+
+/**
+ * @openapi
+ * /api/booking/cancel/{bookingId}:
+ *   post:
+ *     summary: Cancel booking, release seats, issue Stripe refund, and send email
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Booking cancelled and refund processed
+ */
+bookingRouter.post('/cancel/:bookingId', protectUser, cancelBooking);
 
 export default bookingRouter;
