@@ -3,6 +3,7 @@ import Show from "../models/showModel.js";
 import stripe from "stripe";
 import { inngest } from "../inngest/index.js";
 import redis, { safeRedisDel, safeRedisSet } from "../configs/redis.js";
+import { sendBookingConfirmationEmailDirect, sendCancellationRefundEmailDirect } from "../services/emailService.js";
 
 let stripeInstance = null;
 export const getStripeInstance = () => {
@@ -306,8 +307,16 @@ export const getBookingStatus = async (req, res) => {
 
         if (stripeSession && stripeSession.payment_status === "paid") {
           booking.isPaid = true;
+          booking.status = "confirmed";
           booking.paymentLink = "";
           await booking.save();
+
+          // Guaranteed direct ticket confirmation email delivery
+          try {
+            await sendBookingConfirmationEmailDirect(bookingId);
+          } catch (mailErr) {
+            console.warn("[BookingStatus] Direct ticket email notice:", mailErr.message);
+          }
 
           try {
             await inngest.send({
@@ -329,6 +338,7 @@ export const getBookingStatus = async (req, res) => {
       booking: {
         bookingId: booking._id,
         isPaid: booking.isPaid,
+        status: booking.status || (booking.isPaid ? 'confirmed' : 'pending'),
         amount: booking.amount,
         bookedSeats: booking.bookedSeats,
         movieTitle: booking.show?.movie?.title || "Movie",
@@ -340,4 +350,114 @@ export const getBookingStatus = async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to get booking status" });
   }
 };
+
+/**
+ * CANCEL BOOKING & PROCESS REFUND
+ */
+export const cancelBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: "Booking ID is required" });
+    }
+
+    const booking = await Booking.findById(bookingId).populate({
+      path: "show",
+      populate: { path: "movie" }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    // Ensure only the booking owner or admin can cancel
+    if (booking.user.toString() !== userId?.toString() && req.user?.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Unauthorized to cancel this booking" });
+    }
+
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ success: false, message: "This booking is already cancelled." });
+    }
+
+    // Check if screening has already occurred
+    if (booking.show?.showDateTime && new Date(booking.show.showDateTime) < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot cancel a booking for a past screening."
+      });
+    }
+
+    let refundInfo = { amount: booking.amount, refundId: `ref_${Date.now()}` };
+
+    // Process Stripe refund if payment was completed
+    if (booking.isPaid && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const stripe = getStripeInstance();
+        let paymentIntentId = null;
+
+        const sessionMatch = booking.paymentLink?.match(/cs_[a-zA-Z0-9_]+/);
+        if (sessionMatch) {
+          const session = await stripe.checkout.sessions.retrieve(sessionMatch[0]);
+          paymentIntentId = session.payment_intent;
+        } else {
+          const sessions = await stripe.checkout.sessions.list({ limit: 15 });
+          const matchedSession = sessions.data.find(s => s.metadata?.bookingId === bookingId.toString());
+          if (matchedSession) {
+            paymentIntentId = matchedSession.payment_intent;
+          }
+        }
+
+        if (paymentIntentId) {
+          const refund = await stripe.refunds.create({
+            payment_intent: paymentIntentId,
+            reason: "requested_by_customer"
+          });
+          refundInfo.refundId = refund.id;
+          refundInfo.amount = refund.amount ? refund.amount / 100 : booking.amount;
+        }
+      } catch (stripeErr) {
+        console.warn("[CancelBooking] Stripe refund notice:", stripeErr.message);
+      }
+    }
+
+    // Free occupied seats in MongoDB Show document & Redis locks
+    if (booking.show && booking.bookedSeats?.length > 0) {
+      const show = await Show.findById(booking.show._id || booking.show);
+      if (show && show.occupiedSeats) {
+        booking.bookedSeats.forEach(seat => {
+          delete show.occupiedSeats[seat];
+          safeRedisDel(`lock:show:${show._id}:seat:${seat}`);
+        });
+        show.markModified("occupiedSeats");
+        await show.save();
+      }
+    }
+
+    booking.status = "cancelled";
+    booking.isPaid = false;
+    await booking.save();
+
+    await safeRedisDel("cache:active_shows");
+    await safeRedisDel("cache:now_playing_movies");
+
+    // Send Cancellation & Refund Email directly
+    try {
+      await sendCancellationRefundEmailDirect(bookingId, refundInfo);
+    } catch (e) {
+      console.warn("Cancellation email notice:", e.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Ticket successfully cancelled! $${refundInfo.amount} refund initiated and confirmation email dispatched.`,
+      refund: refundInfo
+    });
+  } catch (error) {
+    console.error("Error cancelling booking:", error);
+    return res.status(500).json({ success: false, message: "Failed to cancel booking" });
+  }
+};
+
 

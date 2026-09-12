@@ -18,11 +18,13 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "asynckit": "^0.5.0",
     "axios": "^1.10.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.7.0",
     "compression": "^1.8.2",
     "cors": "^2.8.6",
+    "delayed-stream": "^1.0.0",
     "doctrine": "^3.0.0",
     "dotenv": "^17.0.0",
     "ecdsa-sig-formatter": "^1.0.11",

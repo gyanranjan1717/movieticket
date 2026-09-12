@@ -3,6 +3,7 @@ import Booking from "../models/bookingModel.js";
 import Movie from "../models/movieModel.js";
 import MovieReminder from "../models/MovieReminder.js";
 import { safeRedisDel } from "../configs/redis.js";
+import { sendMovieReminderConfirmationEmail } from "../services/emailService.js";
 
 // API controller function to get logged-in user's bookings
 export const getUserBookings = async (req, res) => {
@@ -104,6 +105,11 @@ export const toggleMovieReminder = async (req, res) => {
       userName: user.name || "Movie Lover",
       movieTitle: movieTitle.trim(),
       movieId: movieId.toString(),
+    });
+
+    // Send instant confirmation email
+    sendMovieReminderConfirmationEmail(user.email, movieTitle.trim(), user.name).catch(err => {
+      console.warn("Could not dispatch reminder confirmation email:", err.message);
     });
 
     return res.status(200).json({

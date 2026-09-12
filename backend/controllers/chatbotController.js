@@ -74,7 +74,10 @@ export const sendMessage = async (req, res) => {
     // Prepare system prompt
     let fullSystemPrompt = SYSTEM_PROMPT;
     if (isAdmin) {
-      fullSystemPrompt += `\n\nADMIN MODE ACTIVATED: You are currently speaking with an authorized ShowTime Administrator. You have permission to call administrative tools like 'adminBatchAddMoviesAndShows' to batch-add 10-12 movies with standard 3-4 hour showtime intervals. When the admin requests this, call the tool directly and confirm the schedule.`;
+      fullSystemPrompt += `\n\nADMIN MODE ACTIVATED: You are currently speaking with an authorized ShowTime Administrator.
+CRITICAL INSTRUCTION: When the administrator asks to add, attach, or schedule movies (e.g. "add 5 movies for next 5 days", "add 10 trending movies", "schedule shows"), YOU MUST CALL THE TOOL 'adminBatchAddMoviesAndShows' IMMEDIATELY.
+DO NOT respond with conversational promises like "Understood, I am processing that now" or "Self-correction" without calling the tool.
+Execute the tool directly, and after it completes, present a celebratory, detailed confirmation of all added movies and their showtime slots to the administrator!`;
     }
     if (dbConfig.systemPromptOverride && dbConfig.systemPromptOverride.trim()) {
       fullSystemPrompt += `\n\nAdditional Admin Instructions:\n${dbConfig.systemPromptOverride}`;

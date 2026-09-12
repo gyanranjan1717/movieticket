@@ -21,6 +21,7 @@ import { useAppContext } from '../context/AppContext';
 import { io } from 'socket.io-client';
 
 const SeatLayout = () => {
+  const currency = import.meta.env.VITE_CURRENCY || "$";
   const groupRows = [["A", "B"], ["C", "D"], ["E", "F"], ["G", "H"], ["I", "J"]];
   const { id, date } = useParams();
   const navigate = useNavigate();
@@ -412,7 +413,7 @@ const SeatLayout = () => {
                       <Clock10Icon className="w-4 h-4" />
                       <p className="text-sm font-semibold">{isoTimeFormate(item.time)}</p>
                     </div>
-                    <span className="text-xs font-bold font-mono">₹{item.showPrice || 250}</span>
+                    <span className="text-xs font-bold font-mono">{currency}{item.showPrice || 12}</span>
                   </div>
                 );
               })
@@ -428,17 +429,17 @@ const SeatLayout = () => {
             <p className="font-semibold text-gray-300 mb-2">Seat Tiers</p>
             <div className="flex items-center justify-between">
               <span>Standard (A-D)</span>
-              <span className="font-semibold text-white">₹{selectedTime?.showPrice || 250}</span>
+              <span className="font-semibold text-white">{currency}{selectedTime?.showPrice || 12}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>Premium (E-H)</span>
-              <span className="font-semibold text-amber-400">₹{(selectedTime?.showPrice || 250) + 50}</span>
+              <span className="font-semibold text-amber-400">{currency}{(selectedTime?.showPrice || 12) + 4}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1 text-rose-400">
                 <Sparkles className="w-3 h-3" /> VIP Recliner (I-J)
               </span>
-              <span className="font-semibold text-rose-400">₹{(selectedTime?.showPrice || 250) + 100}</span>
+              <span className="font-semibold text-rose-400">{currency}{(selectedTime?.showPrice || 12) + 8}</span>
             </div>
           </div>
         </div>
@@ -495,7 +496,7 @@ const SeatLayout = () => {
             <div>
               <span className="text-xs text-gray-400 block">Total Payable</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-white">₹{getTotalPrice()}</span>
+                <span className="text-2xl font-black text-white">{currency}{getTotalPrice()}</span>
                 <span className="text-xs text-gray-500 font-semibold">({selectedSeats.length} seats)</span>
               </div>
             </div>

@@ -6,7 +6,7 @@ import { dateFormate } from '../Lib/dateFormate';
 import { useAppContext } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { Ticket, Film, LogIn, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Ticket, Film, LogIn, ArrowRight, CheckCircle2, AlertCircle, RotateCcw, XCircle } from 'lucide-react';
 
 const MyBooking = () => {
   const currency = import.meta.env.VITE_CURRENCY || '$';
@@ -14,6 +14,36 @@ const MyBooking = () => {
 
   const [booking, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState(null);
+
+  const handleCancelBooking = async (bookingId, movieTitle) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to cancel your booking for "${movieTitle}"?\n\nYour seats will be released and a full refund will be processed back to your original payment method.`
+    );
+    if (!confirmed) return;
+
+    setCancellingId(bookingId);
+    try {
+      const activeToken = token || localStorage.getItem("token");
+      const { data } = await axios.post(`/api/booking/cancel/${bookingId}`, {}, {
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+        },
+      });
+
+      if (data.success) {
+        toast.success(data.message || "Booking cancelled and refund processed!");
+        await getMybooking();
+      } else {
+        toast.error(data.message || "Failed to cancel booking");
+      }
+    } catch (error) {
+      console.error("Error cancelling booking:", error);
+      toast.error(error.response?.data?.message || "Could not cancel booking");
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const getMybooking = async () => {
     setIsLoading(true);
@@ -177,12 +207,29 @@ const MyBooking = () => {
                     </span>
                   </div>
 
-                  <div>
-                    {isPaid ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Confirmed
+                  <div className="flex flex-col items-end gap-2">
+                    {item.status === 'cancelled' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                        <XCircle className="w-3.5 h-3.5" />
+                        Cancelled & Refunded
                       </span>
+                    ) : isPaid ? (
+                      <>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Confirmed
+                        </span>
+                        {new Date(showDateTime) > new Date() && (
+                          <button
+                            onClick={() => handleCancelBooking(item._id, movie.title)}
+                            disabled={cancellingId === item._id}
+                            className="text-xs text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            {cancellingId === item._id ? "Processing Refund..." : "Cancel & Refund"}
+                          </button>
+                        )}
+                      </>
                     ) : item.paymentLink ? (
                       <a
                         href={item.paymentLink}

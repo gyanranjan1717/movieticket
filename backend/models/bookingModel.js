@@ -25,6 +25,11 @@ const bookingSchema = new mongoose.Schema({
     },
     paymentLink: {
         type: String,
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'confirmed', 'cancelled'],
+        default: 'pending'
     }
 }, { timestamps: true });
 

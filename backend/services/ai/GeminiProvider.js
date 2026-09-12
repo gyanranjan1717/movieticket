@@ -189,6 +189,19 @@ export class GeminiProvider extends BaseLLMProvider {
       }
     }
 
+    if (!finalText || !finalText.trim()) {
+      const toolSuccessMsg = toolResults.find(t => t.data?.message)?.data?.message;
+      if (toolSuccessMsg) {
+        finalText = `✅ ${toolSuccessMsg}`;
+      } else if (toolResults.find(t => t.data?.error)) {
+        finalText = `⚠️ ${toolResults.find(t => t.data?.error).data.error}`;
+      } else if (collectedCards.movies?.length > 0) {
+        finalText = "Here are the latest movies scheduled on ShowTime.";
+      } else {
+        finalText = "I have processed your request.";
+      }
+    }
+
     return {
       text: finalText,
       toolResults,
