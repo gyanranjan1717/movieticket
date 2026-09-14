@@ -80,7 +80,8 @@ export const sendSignupOtp = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Verification code sent to ${cleanEmail}. Please check your inbox.`,
+      message: `Verification code sent to ${cleanEmail}. Check your Inbox, Updates, or Spam folder.`,
+      ...(process.env.NODE_ENV !== "production" && { devOtp: generatedOtp }),
     });
   } catch (error) {
     console.error("Error in sendSignupOtp:", error);

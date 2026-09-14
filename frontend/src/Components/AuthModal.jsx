@@ -123,7 +123,10 @@ const AuthModal = () => {
       });
 
       if (data.success) {
-        toast.success(data.message || "Verification code sent to your email!");
+        toast.success(data.message || "Verification code sent! Check Inbox or Spam.");
+        if (data.devOtp) {
+          console.log("🔐 [ShowTime Dev Mode OTP]:", data.devOtp);
+        }
         setSignupStep(2);
         setResendCooldown(30);
       } else {
@@ -604,8 +607,8 @@ const AuthModal = () => {
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                     className="w-full bg-gray-950 border border-primary/60 rounded-xl py-3 text-center text-2xl font-mono tracking-[0.4em] text-white focus:outline-none focus:border-primary transition"
                   />
-                  <p className="text-[11px] text-center text-gray-500 mt-2">
-                    Code expires in 5 minutes
+                  <p className="text-[11px] text-center text-gray-400 mt-2">
+                    Check your <strong>Inbox</strong>, <strong>Updates</strong>, or <strong>Spam</strong> folder. Code expires in 5 minutes.
                   </p>
                 </div>
 
