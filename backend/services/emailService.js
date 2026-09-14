@@ -285,7 +285,7 @@ export const sendSignupOtpEmail = async (userEmail, userName, otp) => {
       </div>
     `;
 
-    await sendEmail(userEmail, `🔐 Your ShowTime Verification Code: ${otp}`, htmlBody);
+    await sendEmail(userEmail, `ShowTime verification code: ${otp}`, htmlBody);
     return true;
   } catch (err) {
     console.error(`[EmailService] Failed to send signup OTP email to ${userEmail}:`, err.message);

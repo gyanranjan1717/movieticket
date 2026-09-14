@@ -69,13 +69,29 @@ const sendEmail = async (to, subject, body) => {
   const transporter = getTransporter();
   const senderEmail = process.env.SENDER_EMAIL || process.env.SMTP_USER || "noreply@showtime.com";
 
+  // Clean plain-text version for MIME multipart/alternative (drastically reduces spam score in Gmail)
+  const plainText = htmlContent
+    ? htmlContent
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : emailSubject;
+
   console.log(`[NodeMailer] Sending email to: ${recipient} | Subject: "${emailSubject}"`);
 
   const response = await transporter.sendMail({
-    from: `"ShowTime Tickets" <${senderEmail}>`,
+    from: `"ShowTime" <${senderEmail}>`,
+    replyTo: senderEmail,
     to: recipient,
     subject: emailSubject || "Notification from ShowTime",
+    text: plainText,
     html: htmlContent || "",
+    headers: {
+      "X-Priority": "1",
+      "X-MSMail-Priority": "High",
+      "Importance": "High",
+    },
   });
 
   return response;
