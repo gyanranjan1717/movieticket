@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import Otp from "../models/Otp.js";
 import sendEmail from "../configs/nodeMailer.js";
+import { sendSignupOtpEmail, sendWelcomeEmail } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import dotenv from "dotenv";
@@ -39,8 +40,8 @@ const generateToken = (user) => {
   );
 };
 
-// Direct User Registration with Password
-export const registerWithPassword = async (req, res) => {
+// 1. Send OTP for User Signup / Registration
+export const sendSignupOtp = async (req, res) => {
   try {
     const { name, email, password } = req.body;
     if (!email || !email.includes("@")) {
@@ -50,28 +51,111 @@ export const registerWithPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
     }
 
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ success: false, message: "An account with this email already exists. Please log in." });
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ email: cleanEmail });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "An account with this email already exists. Please sign in instead."
+      });
     }
 
-    const defaultName = name || email.split("@")[0];
+    // Generate random 6-digit numeric OTP
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Clean up any existing pending signup OTPs for this email
+    await Otp.deleteMany({ email: cleanEmail, purpose: "signup" });
+
+    // Save new OTP with 5 minute TTL (300 seconds)
+    const displayName = (name && name.trim()) || cleanEmail.split("@")[0];
+    await Otp.create({
+      email: cleanEmail,
+      otp: generatedOtp,
+      purpose: "signup",
+      metadata: { name: displayName }
+    });
+
+    // Send verification OTP email
+    await sendSignupOtpEmail(cleanEmail, displayName, generatedOtp);
+
+    return res.status(200).json({
+      success: true,
+      message: `Verification code sent to ${cleanEmail}. Please check your inbox.`,
+    });
+  } catch (error) {
+    console.error("Error in sendSignupOtp:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send registration verification code",
+      error: error.message
+    });
+  }
+};
+
+// 2. Verify 6-digit OTP and Create User Profile
+export const verifySignupOtp = async (req, res) => {
+  try {
+    const { name, email, password, otp } = req.body;
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ success: false, message: "Valid email address is required" });
+    }
+    if (!otp || String(otp).trim().length !== 6) {
+      return res.status(400).json({ success: false, message: "A valid 6-digit verification code is required" });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Find valid OTP record
+    const otpRecord = await Otp.findOne({
+      email: cleanEmail,
+      otp: String(otp).trim(),
+      purpose: "signup"
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification code. Please request a new code."
+      });
+    }
+
+    // Delete OTP record immediately to prevent reuse
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    // Double check that user wasn't created in the meantime
+    let user = await User.findOne({ email: cleanEmail });
+    if (user) {
+      return res.status(400).json({
+        success: false,
+        message: "An account with this email already exists. Please sign in."
+      });
+    }
+
+    const defaultName = (name && name.trim()) || otpRecord.metadata?.name || cleanEmail.split("@")[0];
     const hashedPassword = await hashPassword(password);
 
     user = await User.create({
       _id: "usr_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
       name: defaultName,
-      email,
+      email: cleanEmail,
       password: hashedPassword,
       image: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(defaultName)}`,
       role: "user",
       favorites: [],
     });
 
+    // Send Welcome email non-blockingly
+    sendWelcomeEmail(user.email, user.name).catch((err) => {
+      console.warn("[Auth] Welcome email notice:", err.message);
+    });
+
     const token = generateToken(user);
     return res.status(201).json({
       success: true,
-      message: "Account created successfully! Welcome to ShowTime.",
+      message: "Account verified and created successfully! Welcome to ShowTime.",
       token,
       user: {
         id: user._id,
@@ -83,9 +167,26 @@ export const registerWithPassword = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in registerWithPassword:", error);
-    return res.status(500).json({ success: false, message: "Registration failed", error: error.message });
+    console.error("Error in verifySignupOtp:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Verification and account creation failed",
+      error: error.message
+    });
   }
+};
+
+// Backward-compatible User Registration (Enforces OTP verification)
+export const registerWithPassword = async (req, res) => {
+  const { otp } = req.body;
+  if (otp) {
+    return verifySignupOtp(req, res);
+  }
+  return res.status(400).json({
+    success: false,
+    message: "Email verification required. Please request a verification code first.",
+    requiresOtp: true,
+  });
 };
 
 // Direct User Login with Password

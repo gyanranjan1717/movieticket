@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Mail,
@@ -10,7 +10,8 @@ import {
   ShieldAlert,
   Eye,
   EyeOff,
-  Sparkles
+  Sparkles,
+  RotateCcw
 } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 import toast from "react-hot-toast";
@@ -24,6 +25,10 @@ const AuthModal = () => {
   const [useOtpLogin, setUseOtpLogin] = useState(false);
   const [otpStep, setOtpStep] = useState(1); // 1: Enter Email, 2: Enter OTP
 
+  // Signup Multi-Step (1: Details, 2: Verification OTP)
+  const [signupStep, setSignupStep] = useState(1);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
   // Form Fields
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,6 +38,15 @@ const AuthModal = () => {
   const [adminKey, setAdminKey] = useState("");
   const [showAdminKey, setShowAdminKey] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Resend cooldown timer effect
+  useEffect(() => {
+    let timer;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   if (!isAuthModalOpen) return null;
 
@@ -44,6 +58,8 @@ const AuthModal = () => {
     setAdminKey("");
     setShowAdminKey(false);
     setOtpStep(1);
+    setSignupStep(1);
+    setResendCooldown(0);
     setUseOtpLogin(false);
     setActiveTab("login");
     setIsAuthModalOpen(false);
@@ -82,9 +98,9 @@ const AuthModal = () => {
     }
   };
 
-  // 2. Password-based Sign Up (Registration)
-  const handlePasswordSignUp = async (e) => {
-    e.preventDefault();
+  // 2. Sign Up Step 1: Request 6-digit OTP
+  const handleRequestSignupOtp = async (e) => {
+    if (e) e.preventDefault();
     if (!name.trim()) {
       toast.error("Please enter your full name");
       return;
@@ -100,21 +116,52 @@ const AuthModal = () => {
 
     setLoading(true);
     try {
-      const { data } = await axios.post("/api/auth/register-password", {
+      const { data } = await axios.post("/api/auth/send-signup-otp", {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
       });
 
       if (data.success) {
-        login(data.token, data.user);
-        toast.success(data.message || "Account created successfully!");
-        resetForm();
+        toast.success(data.message || "Verification code sent to your email!");
+        setSignupStep(2);
+        setResendCooldown(30);
       } else {
-        toast.error(data.message || "Registration failed");
+        toast.error(data.message || "Failed to send verification code");
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || "Registration failed");
+      toast.error(error.response?.data?.message || "Failed to send verification code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sign Up Step 2: Verify OTP & Create User Profile
+  const handleVerifySignupOtp = async (e) => {
+    if (e) e.preventDefault();
+    if (!otp || String(otp).trim().length !== 6) {
+      toast.error("Please enter the 6-digit verification code");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data } = await axios.post("/api/auth/verify-signup-otp", {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        otp: String(otp).trim(),
+      });
+
+      if (data.success) {
+        login(data.token, data.user);
+        toast.success(data.message || "Account verified and created successfully! 🍿");
+        resetForm();
+      } else {
+        toast.error(data.message || "Verification failed");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Verification failed");
     } finally {
       setLoading(false);
     }
@@ -275,6 +322,7 @@ const AuthModal = () => {
               setActiveTab("signup");
               setUseOtpLogin(false);
               setOtpStep(1);
+              setSignupStep(1);
             }}
             className={`flex-1 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               activeTab === "signup"
@@ -291,6 +339,7 @@ const AuthModal = () => {
               setActiveTab("admin");
               setUseOtpLogin(false);
               setOtpStep(1);
+              setSignupStep(1);
             }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               activeTab === "admin"
@@ -316,14 +365,18 @@ const AuthModal = () => {
             {activeTab === "login"
               ? "Welcome Back to ShowTime"
               : activeTab === "signup"
-              ? "Create Your ShowTime Account"
+              ? signupStep === 1
+                ? "Create Your ShowTime Account"
+                : "Verify Your Email"
               : "Administrator Portal"}
           </h2>
           <p className="text-xs text-gray-400 mt-1">
             {activeTab === "login"
               ? "Sign in with your email and password or Google"
               : activeTab === "signup"
-              ? "Join ShowTime for instant movie bookings & VIP perks"
+              ? signupStep === 1
+                ? "Join ShowTime for instant movie bookings & VIP perks"
+                : `Enter the 6-digit code sent to ${email}`
               : "Enter admin credentials & master secret key"}
           </p>
         </div>
@@ -420,107 +473,181 @@ const AuthModal = () => {
           </form>
         )}
 
-        {/* ================= USER SIGN UP (REGISTER) ================= */}
+        {/* ================= USER SIGN UP (REGISTER WITH OTP) ================= */}
         {activeTab === "signup" && (
-          <form onSubmit={handlePasswordSignUp} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5">
-                Full Name
-              </label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Gyan Ranjan"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
-                />
-              </div>
-            </div>
+          <div>
+            {signupStep === 1 ? (
+              <form onSubmit={handleRequestSignupOtp} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Gyan Ranjan"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="email"
-                  required
-                  placeholder="your.email@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
-                />
-              </div>
-            </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="your.email@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5">
-                Create Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  placeholder="At least 6 characters"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
-                />
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    Create Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      placeholder="At least 6 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
                 <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold shadow-lg shadow-primary/30 transition cursor-pointer disabled:opacity-60"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {loading ? "Sending Verification Code..." : "Continue with Verification"}
+                  <ArrowRight className="w-4 h-4" />
                 </button>
-              </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold shadow-lg shadow-primary/30 transition cursor-pointer disabled:opacity-60"
-            >
-              {loading ? "Creating Account..." : "Create Account"}
-              <ArrowRight className="w-4 h-4" />
-            </button>
+                <div className="text-center text-xs pt-1">
+                  <span className="text-gray-400">Already have an account? </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("login");
+                      setSignupStep(1);
+                    }}
+                    className="text-primary hover:underline font-semibold cursor-pointer"
+                  >
+                    Sign in here
+                  </button>
+                </div>
 
-            <div className="text-center text-xs pt-1">
-              <span className="text-gray-400">Already have an account? </span>
-              <button
-                type="button"
-                onClick={() => setActiveTab("login")}
-                className="text-primary hover:underline font-semibold cursor-pointer"
-              >
-                Sign in here
-              </button>
-            </div>
+                {/* Google OAuth Divider */}
+                <div className="relative flex items-center justify-center my-4">
+                  <div className="border-t border-gray-800 w-full" />
+                  <span className="bg-gray-900 px-3 text-[11px] text-gray-500 uppercase tracking-widest">
+                    OR
+                  </span>
+                  <div className="border-t border-gray-800 w-full" />
+                </div>
 
-            {/* Google OAuth Divider */}
-            <div className="relative flex items-center justify-center my-4">
-              <div className="border-t border-gray-800 w-full" />
-              <span className="bg-gray-900 px-3 text-[11px] text-gray-500 uppercase tracking-widest">
-                OR
-              </span>
-              <div className="border-t border-gray-800 w-full" />
-            </div>
+                <div className="flex justify-center">
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => toast.error("Google Login Failed")}
+                    theme="filled_black"
+                    shape="pill"
+                    text="signup_with"
+                    width="100%"
+                  />
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifySignupOtp} className="space-y-4 animate-in fade-in duration-200">
+                <div className="bg-gray-950/60 border border-gray-800 p-3.5 rounded-2xl text-center">
+                  <p className="text-xs text-gray-400">
+                    A 6-digit verification code has been dispatched to:
+                  </p>
+                  <p className="text-sm font-semibold text-white mt-0.5 break-all">
+                    {email}
+                  </p>
+                </div>
 
-            <div className="flex justify-center">
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => toast.error("Google Login Failed")}
-                theme="filled_black"
-                shape="pill"
-                text="signup_with"
-                width="100%"
-              />
-            </div>
-          </form>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-2 text-center">
+                    Enter Verification Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    maxLength={6}
+                    placeholder="------"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    className="w-full bg-gray-950 border border-primary/60 rounded-xl py-3 text-center text-2xl font-mono tracking-[0.4em] text-white focus:outline-none focus:border-primary transition"
+                  />
+                  <p className="text-[11px] text-center text-gray-500 mt-2">
+                    Code expires in 5 minutes
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || otp.length < 6}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold shadow-lg shadow-primary/30 transition cursor-pointer disabled:opacity-60"
+                >
+                  {loading ? "Creating & Verifying Account..." : "Verify & Complete Registration"}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignupStep(1);
+                      setOtp("");
+                    }}
+                    className="text-gray-400 hover:text-white transition underline cursor-pointer"
+                  >
+                    ← Edit Details
+                  </button>
+
+                  {resendCooldown > 0 ? (
+                    <span className="text-gray-500 font-mono">
+                      Resend in {resendCooldown}s
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={handleRequestSignupOtp}
+                      className="text-primary hover:underline font-semibold cursor-pointer"
+                    >
+                      Resend code
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
+          </div>
         )}
 
         {/* ================= ADMIN PORTAL ================= */}

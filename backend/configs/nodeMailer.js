@@ -51,20 +51,31 @@ const getTransporter = () => {
 };
 
 const sendEmail = async (to, subject, body) => {
-  if (!to || typeof to !== "string" || to.trim() === "") {
+  let recipient = to;
+  let emailSubject = subject;
+  let htmlContent = body;
+
+  // Support object parameter style { to, subject, html/body }
+  if (typeof to === "object" && to !== null) {
+    recipient = to.to || to.email;
+    emailSubject = to.subject || subject;
+    htmlContent = to.html || to.body || body;
+  }
+
+  if (!recipient || typeof recipient !== "string" || recipient.trim() === "") {
     throw new Error("Recipient email address is missing or invalid.");
   }
 
   const transporter = getTransporter();
   const senderEmail = process.env.SENDER_EMAIL || process.env.SMTP_USER || "noreply@showtime.com";
 
-  console.log(`Sending email to: ${to} from: ${senderEmail}`);
+  console.log(`[NodeMailer] Sending email to: ${recipient} | Subject: "${emailSubject}"`);
 
   const response = await transporter.sendMail({
     from: `"ShowTime Tickets" <${senderEmail}>`,
-    to,
-    subject,
-    html: body,
+    to: recipient,
+    subject: emailSubject || "Notification from ShowTime",
+    html: htmlContent || "",
   });
 
   return response;

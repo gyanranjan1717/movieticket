@@ -2,6 +2,8 @@ import express from "express";
 import {
   sendOtp,
   verifyOtp,
+  sendSignupOtp,
+  verifySignupOtp,
   googleAuth,
   getMe,
   sendAdminOtp,
@@ -21,6 +23,10 @@ import {
 } from "../schemas/validationSchemas.js";
 
 const authRouter = express.Router();
+
+// Signup with OTP verification endpoints
+authRouter.post("/send-signup-otp", sendSignupOtp);
+authRouter.post("/verify-signup-otp", verifySignupOtp);
 
 // Direct Password & Admin Login Endpoints
 authRouter.post("/register-password", registerWithPassword);

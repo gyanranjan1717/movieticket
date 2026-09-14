@@ -1,6 +1,7 @@
 import stripe from 'stripe'
 import Booking from '../models/bookingModel.js'
 import { inngest } from '../inngest/index.js';
+import { sendBookingConfirmationEmailDirect } from '../services/emailService.js';
 
 let stripeInstance = null;
 const getStripe = () => {
@@ -39,6 +40,13 @@ export const stripeWebhooks = async (request, response) => {
                         paymentLink: ""
                     });
 
+                    // Direct guaranteed email delivery
+                    try {
+                        await sendBookingConfirmationEmailDirect(bookingId);
+                    } catch (mailErr) {
+                        console.warn("[StripeWebhook] Direct email dispatch error:", mailErr.message);
+                    }
+
                     try {
                         await inngest.send({
                             name: "app/show.booked",
@@ -64,6 +72,13 @@ export const stripeWebhooks = async (request, response) => {
                         isPaid: true,
                         paymentLink: ""
                     });
+
+                    // Direct guaranteed email delivery
+                    try {
+                        await sendBookingConfirmationEmailDirect(bookingId);
+                    } catch (mailErr) {
+                        console.warn("[StripeWebhook] Direct email dispatch error:", mailErr.message);
+                    }
 
                     try {
                         await inngest.send({

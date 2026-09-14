@@ -2,8 +2,13 @@ import { Inngest } from "inngest";
 import User from "../models/User.js";
 import Booking from "../models/bookingModel.js";
 import Show from "../models/showModel.js";
+import Movie from "../models/movieModel.js";
 import path from "path";
 import sendEmail from "../configs/nodeMailer.js";
+import { 
+  sendBookingConfirmationEmailDirect, 
+  sendNewShowNotificationDirect 
+} from "../services/emailService.js";
 import dotenv from "dotenv";
 dotenv.config();
 import { DateTime } from "luxon";
@@ -150,62 +155,11 @@ const sendBookingConfirmationEmail = inngest.createFunction(
   async ({ event, step }) => {
     const { bookingId } = event.data;
 
-    const booking = await Booking.findById(bookingId)
-      .populate({
-        path: "show",
-        populate: {
-          path: "movie",
-          model: "Movie",
-        },
-      })
-      .populate("user");
-
-    if (!booking || !booking.user || !booking.show) return;
-
-    // Format Date & Time using luxon
-    const showDateTime = DateTime.fromISO(new Date(booking.show.showDateTime).toISOString(), {
-      zone: "Asia/Kolkata",
+    return await step.run("send-booking-ticket-email", async () => {
+      console.log(`[Inngest] Executing send-booking-confirmation-email for bookingId: ${bookingId}`);
+      const success = await sendBookingConfirmationEmailDirect(bookingId);
+      return { success, bookingId };
     });
-
-    const formattedDate = showDateTime.toLocaleString(DateTime.DATE_MED);
-    const formattedTime = showDateTime.toLocaleString(DateTime.TIME_SIMPLE);
-    const seatsText = (booking.bookedSeats || []).join(", ") || "General Admission";
-    const posterUrl = booking.show.movie?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80";
-
-    // Send rich HTML ticket email
-    await sendEmail(
-      booking.user.email,
-      `🎟️ Your Movie Ticket: ${booking.show.movie.title}`,
-      `
-        <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 30px; border-radius: 16px; max-w: 600px; margin: 0 auto; border: 1px solid #1f2937;">
-          <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #1f2937;">
-            <h1 style="color: #e11d48; margin: 0; font-size: 28px;">ShowTime Cinema</h1>
-            <p style="color: #9ca3af; font-size: 13px; margin-top: 5px;">Official Mobile E-Ticket</p>
-          </div>
-
-          <div style="margin-top: 25px; display: flex; gap: 20px;">
-            <img src="${posterUrl}" alt="${booking.show.movie.title}" style="width: 120px; height: 170px; object-fit: cover; border-radius: 12px; border: 1px solid #374151;" />
-            <div style="flex: 1;">
-              <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 22px;">${booking.show.movie.title}</h2>
-              <p style="margin: 4px 0; color: #d1d5db; font-size: 14px;"><strong>📅 Date:</strong> ${formattedDate}</p>
-              <p style="margin: 4px 0; color: #d1d5db; font-size: 14px;"><strong>⏰ Time:</strong> ${formattedTime}</p>
-              <p style="margin: 4px 0; color: #10b981; font-size: 14px;"><strong>🎟️ Reserved Seats:</strong> <span style="background-color: #064e3b; color: #34d399; padding: 3px 8px; border-radius: 6px; font-weight: bold;">${seatsText}</span></p>
-              <p style="margin: 4px 0; color: #d1d5db; font-size: 14px;"><strong>💰 Paid:</strong> $${booking.amount || 0}</p>
-            </div>
-          </div>
-
-          <div style="margin-top: 25px; padding: 15px; background-color: #111827; border-radius: 12px; text-align: center; border: 1px dashed #374151;">
-            <p style="margin: 0; color: #9ca3af; font-size: 12px;">BOOKING ID</p>
-            <p style="margin: 5px 0 0 0; color: #f59e0b; font-family: monospace; font-size: 18px; font-weight: bold; letter-spacing: 2px;">#${booking._id.toString().toUpperCase()}</p>
-            <p style="margin: 10px 0 0 0; color: #6b7280; font-size: 11px;">Show this email or booking ID at theater entrance gate.</p>
-          </div>
-
-          <div style="margin-top: 25px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #1f2937; padding-top: 15px;">
-            <p>Enjoy your movie experience at <strong>ShowTime Cinema</strong>!</p>
-          </div>
-        </div>
-      `
-    );
   }
 );
 
@@ -299,45 +253,11 @@ const sendNewShowNotification = inngest.createFunction(
   async ({ event, step }) => {
     const { movieTitle, movieId } = event.data;
 
-    // 1. Fetch targeted users who clicked "Remind Me" for this movie
-    const reminders = await step.run("fetch-movie-reminders", async () => {
-      return await MovieReminder.find({
-        $or: [{ movieId: movieId }, { movieTitle: new RegExp(movieTitle, "i") }],
-      });
+    return await step.run("send-remind-me-notifications", async () => {
+      console.log(`[Inngest] Executing send-new-show-notifications for movie "${movieTitle}" (${movieId})`);
+      const result = await sendNewShowNotificationDirect(movieId, movieTitle);
+      return result;
     });
-
-    if (reminders.length === 0) {
-      return { message: "No subscribers to notify for this movie" };
-    }
-
-    const results = await step.run("send-remind-me-emails", async () => {
-      return await Promise.allSettled(
-        reminders.map((sub) =>
-          sendEmail(
-            sub.userEmail,
-            `🎟️ Tickets OPEN: ${movieTitle} is now available for booking!`,
-            `
-              <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #ffffff; padding: 25px; border-radius: 16px; max-w: 550px; margin: 0 auto; border: 1px solid #1f2937;">
-                <h2 style="color: #10b981; margin-top: 0;">🎉 Great News! Tickets are OPEN!</h2>
-                <p>Hi <strong>${sub.userName}</strong>,</p>
-                <p>You asked us to remind you when showtimes were added for <strong style="color: #e11d48;">"${movieTitle}"</strong>.</p>
-                
-                <div style="background-color: #111827; padding: 15px; border-radius: 12px; margin: 15px 0; text-align: center; border: 1px solid #374151;">
-                  <h3 style="color: #ffffff; margin: 0 0 10px 0;">"${movieTitle}" Screenings Available Now</h3>
-                  <p style="color: #9ca3af; font-size: 13px; margin: 0 0 15px 0;">Reserve your preferred seats before they fill up!</p>
-                  <a href="http://localhost:5173/Movies" style="background-color: #e11d48; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 10px; font-weight: bold; display: inline-block;">Book Tickets Now</a>
-                </div>
-
-                <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Thanks for using ShowTime Cinema Reminders! 🍿</p>
-              </div>
-            `
-          )
-        )
-      );
-    });
-
-    const sent = results.filter((r) => r.status === "fulfilled").length;
-    return { sent, message: `Sent ${sent} "Remind Me" notifications for ${movieTitle}` };
   }
 );
 
