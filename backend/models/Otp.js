@@ -5,7 +5,7 @@ const otpSchema = new mongoose.Schema({
     otp: { type: String, required: true },
     purpose: { 
         type: String, 
-        enum: ['auth', 'user_cancellation', 'admin_show_deletion'], 
+        enum: ['auth', 'signup', 'user_cancellation', 'admin_show_deletion'], 
         default: 'auth' 
     },
     targetId: { type: String, default: null }, // Binds OTP to specific bookingId or showId

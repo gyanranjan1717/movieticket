@@ -5,6 +5,7 @@ import Movie from "../models/movieModel.js";
 import Show from "../models/showModel.js";
 import { inngest } from '../inngest/index.js';
 import { safeRedisGet, safeRedisSet, safeRedisDel } from "../configs/redis.js";
+import { sendNewShowNotificationDirect } from "../services/emailService.js";
 
 const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false });
 const TMDB_API_KEY = process.env.TMDB_API_KEY || "b7137153ea0b11c6c469fb17a7e38dea";
@@ -230,6 +231,11 @@ export const addShow = async (req, res) => {
     // Invalidate active shows Redis cache
     await safeRedisDel("cache:active_shows");
     await safeRedisDel("cache:admin_selectable_movies");
+
+    // Guaranteed direct email notification to users who clicked "Remind Me"
+    sendNewShowNotificationDirect(movie._id.toString(), movie.title).catch((err) => {
+      console.warn("[ShowController] Direct reminder notification warning:", err.message);
+    });
 
     try {
       await inngest.send({
