@@ -1,0 +1,39 @@
+name: Render Backend Keep-Alive
+
+on:
+  schedule:
+    # Runs every 25 minutes to keep backend warm while saving ~40% free-tier hours
+    - cron: '*/25 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions UI
+
+jobs:
+  ping:
+    name: Ping Render Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive HTTP Ping
+        env:
+          # Uses GitHub Secret if configured, otherwise falls back to the default URL placeholder
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL || 'https://itsshowtime-backend.onrender.com' }}
+        run: |
+          echo "Sending ping to $BACKEND_URL at $(date -u)"
+          
+          # Curl with a 45s timeout and retry (handles Render cold start wakeup)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 20 --max-time 45 "$BACKEND_URL/")
+          
+          echo "Response HTTP Status: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "✅ Backend is alive and responded successfully!"
+          else
+            echo "⚠️ Received HTTP $HTTP_STATUS (or timeout). Retrying once..."
+            sleep 5
+            RETRY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 20 --max-time 45 "$BACKEND_URL/")
+            echo "Retry HTTP Status: $RETRY_STATUS"
+            if [ "$RETRY_STATUS" -ge 200 ] && [ "$RETRY_STATUS" -lt 400 ]; then
+              echo "✅ Backend awakened after retry!"
+            else
+              echo "❌ Backend ping failed with HTTP $RETRY_STATUS"
+              exit 1
+            fi
+          fi
